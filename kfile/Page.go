@@ -12,6 +12,8 @@ type Page struct {
 
 const OUTOFBOUNDS = "offset out of bounds"
 
+//TODO: Implement the syncronized equivalent in Java
+
 // NewPage creates a new Page with a byte slice of the given block size.
 func NewPage(blockSize int) *Page {
 	return &Page{
