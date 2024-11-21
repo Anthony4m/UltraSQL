@@ -7,26 +7,34 @@ import (
 )
 
 type Page struct {
-	data []byte
+	data   []byte
+	PageID PageID
 }
 
 const OUTOFBOUNDS = "offset out of bounds"
 
-//TODO: Implement the syncronized equivalent in Java
+// TODO: Implement the syncronized equivalent in Java
+func NewPage(blockSize int, filename string) *Page {
 
-// NewPage creates a new Page with a byte slice of the given block size.
-func NewPage(blockSize int) *Page {
 	return &Page{
 		data: make([]byte, blockSize),
+		PageID: PageID{
+			BlockNumber: blockSize,
+			Filename:    filename,
+		},
 	}
 }
 
 // NewPageFromBytes creates a new Page by wrapping the provided byte slice.
-func NewPageFromBytes(b []byte) *Page {
+func NewPageFromBytes(b []byte, filename string, blocknumber int) *Page {
 	dataCopy := make([]byte, len(b))
 	copy(dataCopy, b)
 	return &Page{
 		data: dataCopy,
+		PageID: PageID{
+			BlockNumber: blocknumber,
+			Filename:    filename,
+		},
 	}
 }
 
@@ -67,15 +75,22 @@ func (p *Page) GetString(offset int, length int) (string, error) {
 	if offset+length > len(p.data) {
 		return "", fmt.Errorf(OUTOFBOUNDS)
 	}
-	return string(p.data[offset : offset+length]), nil
+
+	// Trim null/zero bytes
+	str := string(trimZero(p.data[offset : offset+length]))
+	return str, nil
 }
 
 func (p *Page) SetString(offset int, val string) error {
+	// Truncate or pad the string to a fixed length
 	length := len(val)
+	strBytes := make([]byte, length)
+	copy(strBytes, val)
+
 	if offset+length > len(p.data) {
 		return fmt.Errorf(OUTOFBOUNDS)
 	}
-	copy(p.data[offset:], val)
+	copy(p.data[offset:], strBytes)
 	return nil
 }
 
@@ -130,4 +145,13 @@ func MaxLength(strlen int) int {
 func (p *Page) Contents() []byte {
 	// No need to reset position; just return the data slice.
 	return p.data
+}
+
+func trimZero(s []byte) []byte {
+	for i := len(s) - 1; i >= 0; i-- {
+		if s[i] != 0 {
+			return s[:i+1]
+		}
+	}
+	return []byte{}
 }
