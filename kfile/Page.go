@@ -25,7 +25,6 @@ func NewPage(blockSize int, filename string) *Page {
 	}
 }
 
-// NewPageFromBytes creates a new Page by wrapping the provided byte slice.
 func NewPageFromBytes(b []byte, filename string, blocknumber int) *Page {
 	dataCopy := make([]byte, len(b))
 	copy(dataCopy, b)
@@ -76,13 +75,11 @@ func (p *Page) GetString(offset int, length int) (string, error) {
 		return "", fmt.Errorf(OUTOFBOUNDS)
 	}
 
-	// Trim null/zero bytes
 	str := string(trimZero(p.data[offset : offset+length]))
 	return str, nil
 }
 
 func (p *Page) SetString(offset int, val string) error {
-	// Truncate or pad the string to a fixed length
 	length := len(val)
 	strBytes := make([]byte, length)
 	copy(strBytes, val)
@@ -121,7 +118,7 @@ func (p *Page) SetDate(offset int, val time.Time) error {
 		return fmt.Errorf("offset out of bounds")
 	}
 	convertedVal := uint64(val.Unix())
-	binary.BigEndian.PutUint64(p.data[offset:], convertedVal) // Use PutUint64 here
+	binary.BigEndian.PutUint64(p.data[offset:], convertedVal)
 	return nil
 }
 
@@ -133,17 +130,12 @@ func (p *Page) GetDate(offset int) (time.Time, error) {
 	return time.Unix(int64(timestamp), 0), nil
 }
 
-// MaxLength calculates the maximum number of bytes needed to store a string of length strlen.
 func MaxLength(strlen int) int {
-	// Assuming US-ASCII encoding (1 byte per character)
 	bytesPerChar := 1
-	// 4 bytes for the length of the string (int32), plus bytes for each character
 	return 4 + (strlen * bytesPerChar)
 }
 
-// Contents returns the data slice of the Page.
 func (p *Page) Contents() []byte {
-	// No need to reset position; just return the data slice.
 	return p.data
 }
 

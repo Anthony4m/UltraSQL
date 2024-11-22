@@ -13,7 +13,7 @@ type FileMgr struct {
 	blocksize     int
 	isNew         bool
 	openFiles     map[string]*os.File
-	mutex         sync.Mutex
+	mutex         sync.RWMutex
 	blocksRead    int
 	blocksWritten int
 	readLog       []ReadWriteLogEntry
@@ -56,7 +56,7 @@ func NewFileMgr(dbDirectory string, blocksize int) (*FileMgr, error) {
 	}
 
 	for _, file := range files {
-		if !file.IsDir() && filepath.Ext(file.Name()) == ".tmp" { // Adjust condition as needed
+		if !file.IsDir() && filepath.Ext(file.Name()) == ".tmp" {
 			tempPath := filepath.Join(dbDirectory, file.Name())
 			err := os.Remove(tempPath)
 			if err != nil {
@@ -83,6 +83,8 @@ func (fm *FileMgr) getFile(filename string) (*os.File, error) {
 }
 
 func (fm *FileMgr) Read(blk *BlockId, p *PageManager, id PageID) error {
+	fm.mutex.RLock()
+	defer fm.mutex.RUnlock()
 	f, err := fm.getFile(blk.FileName())
 	if err != nil {
 		return fmt.Errorf("failed to get file for block %v: %v", blk, err)
@@ -94,10 +96,8 @@ func (fm *FileMgr) Read(blk *BlockId, p *PageManager, id PageID) error {
 		return fmt.Errorf("failed to seek to offset %d in file %s: %v", offset, blk.FileName(), err)
 	}
 
-	// Create a new page if it doesn't exist
 	pmgr, err := p.GetPage(id)
 	if err != nil {
-		// If page not found, create a new page and add it
 		newPage := NewPage(fm.blocksize, blk.FileName())
 		p.SetPage(id, newPage)
 		pmgr = newPage
@@ -123,6 +123,9 @@ func (fm *FileMgr) Read(blk *BlockId, p *PageManager, id PageID) error {
 
 func (fm *FileMgr) Write(blk *BlockId, p *Page) error {
 
+	fm.mutex.Lock()
+	defer fm.mutex.Unlock()
+
 	f, err := fm.getFile(blk.FileName())
 	if err != nil {
 		return fmt.Errorf("failed to get file for block %v: %v", blk, err)
@@ -142,7 +145,6 @@ func (fm *FileMgr) Write(blk *BlockId, p *Page) error {
 		return fmt.Errorf("incomplete write: expected %d bytes, wrote %d", fm.blocksize, bytesWritten)
 	}
 
-	// Ensure data is flushed to disk
 	err = f.Sync()
 	if err != nil {
 		return fmt.Errorf("failed to sync file %s: %v", blk.FileName(), err)
@@ -157,6 +159,8 @@ func (fm *FileMgr) Write(blk *BlockId, p *Page) error {
 	return nil
 }
 func (fm *FileMgr) Append(filename string) (*BlockId, error) {
+	fm.mutex.Lock()
+	defer fm.mutex.Unlock()
 	newblknum, err := fm.lengthLocked(filename)
 	if err != nil {
 		return nil, fmt.Errorf("failed to determine length for file %s: %v", filename, err)
@@ -237,14 +241,14 @@ func (fm *FileMgr) BlocksWritten() int {
 
 func (fm *FileMgr) addToReadLog(entry ReadWriteLogEntry) {
 	if len(fm.readLog) >= maxLogEntries {
-		fm.readLog = fm.readLog[1:] // Drop the oldest entry
+		fm.readLog = fm.readLog[1:]
 	}
 	fm.readLog = append(fm.readLog, entry)
 }
 
 func (fm *FileMgr) addToWriteLog(entry ReadWriteLogEntry) {
 	if len(fm.writeLog) >= maxLogEntries {
-		fm.writeLog = fm.writeLog[1:] // Drop the oldest entry
+		fm.writeLog = fm.writeLog[1:]
 	}
 	fm.writeLog = append(fm.writeLog, entry)
 }
