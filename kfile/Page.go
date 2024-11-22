@@ -7,26 +7,33 @@ import (
 )
 
 type Page struct {
-	data []byte
+	data   []byte
+	PageID PageID
 }
 
 const OUTOFBOUNDS = "offset out of bounds"
 
-//TODO: Implement the syncronized equivalent in Java
+// TODO: Implement the syncronized equivalent in Java
+func NewPage(blockSize int, filename string) *Page {
 
-// NewPage creates a new Page with a byte slice of the given block size.
-func NewPage(blockSize int) *Page {
 	return &Page{
 		data: make([]byte, blockSize),
+		PageID: PageID{
+			BlockNumber: blockSize,
+			Filename:    filename,
+		},
 	}
 }
 
-// NewPageFromBytes creates a new Page by wrapping the provided byte slice.
-func NewPageFromBytes(b []byte) *Page {
+func NewPageFromBytes(b []byte, filename string, blocknumber int) *Page {
 	dataCopy := make([]byte, len(b))
 	copy(dataCopy, b)
 	return &Page{
 		data: dataCopy,
+		PageID: PageID{
+			BlockNumber: blocknumber,
+			Filename:    filename,
+		},
 	}
 }
 
@@ -67,15 +74,20 @@ func (p *Page) GetString(offset int, length int) (string, error) {
 	if offset+length > len(p.data) {
 		return "", fmt.Errorf(OUTOFBOUNDS)
 	}
-	return string(p.data[offset : offset+length]), nil
+
+	str := string(trimZero(p.data[offset : offset+length]))
+	return str, nil
 }
 
 func (p *Page) SetString(offset int, val string) error {
 	length := len(val)
+	strBytes := make([]byte, length)
+	copy(strBytes, val)
+
 	if offset+length > len(p.data) {
 		return fmt.Errorf(OUTOFBOUNDS)
 	}
-	copy(p.data[offset:], val)
+	copy(p.data[offset:], strBytes)
 	return nil
 }
 
@@ -106,7 +118,7 @@ func (p *Page) SetDate(offset int, val time.Time) error {
 		return fmt.Errorf("offset out of bounds")
 	}
 	convertedVal := uint64(val.Unix())
-	binary.BigEndian.PutUint64(p.data[offset:], convertedVal) // Use PutUint64 here
+	binary.BigEndian.PutUint64(p.data[offset:], convertedVal)
 	return nil
 }
 
@@ -118,16 +130,20 @@ func (p *Page) GetDate(offset int) (time.Time, error) {
 	return time.Unix(int64(timestamp), 0), nil
 }
 
-// MaxLength calculates the maximum number of bytes needed to store a string of length strlen.
 func MaxLength(strlen int) int {
-	// Assuming US-ASCII encoding (1 byte per character)
 	bytesPerChar := 1
-	// 4 bytes for the length of the string (int32), plus bytes for each character
 	return 4 + (strlen * bytesPerChar)
 }
 
-// Contents returns the data slice of the Page.
 func (p *Page) Contents() []byte {
-	// No need to reset position; just return the data slice.
 	return p.data
+}
+
+func trimZero(s []byte) []byte {
+	for i := len(s) - 1; i >= 0; i-- {
+		if s[i] != 0 {
+			return s[:i+1]
+		}
+	}
+	return []byte{}
 }
