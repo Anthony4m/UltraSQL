@@ -1,0 +1,47 @@
+# Workflow to build, test, and benchmark Go project
+name: Go Test and Benchmark
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+    # Step 1: Check out the code
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    # Step 2: Set up Go environment
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.20'
+
+    # Step 3: Cache Go modules for faster builds
+    - name: Cache Go Modules
+      uses: actions/cache@v3
+      with:
+        path: ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+
+    # Step 4: Install dependencies
+    - name: Install Dependencies
+      run: go mod tidy
+
+    # Step 5: Run Unit Tests
+    - name: Run Tests
+      run: go test -cover -v ./...
+
+    # Step 6: Run Benchmarks (Optional)
+    # This step runs benchmarks but does not fail the build if they fail.
+    - name: Run Benchmarks
+      run: |
+        echo "Running Benchmarks"
+        go test -bench=. ./... || echo "Benchmarks completed with warnings"
