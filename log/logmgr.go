@@ -25,14 +25,14 @@ func newLogMgr(fm *kfile.FileMgr, logFile string) (*LogMgr, error) {
 
 	logMgr.logsize = fm.NewLength(logFile)
 	pageManager := kfile.NewPageManager(fm.BlockSize())
-
 	if logMgr.logsize == 0 {
 		logMgr.currentBlock = logMgr.appendNewBlock()
 	} else {
+		b := make([]byte, fm.BlockSize())
 		logMgr.currentBlock = kfile.NewBlockId(logFile, logMgr.logsize-1)
+		newPageBytes := kfile.NewPageFromBytes(b, logFile, logMgr.currentBlock.Blknum)
 		pageID := kfile.NewPageId(*logMgr.currentBlock)
-		newPage := kfile.NewPage(fm.BlockSize(), logFile)
-		pageManager.SetPage(pageID, newPage)
+		pageManager.SetPage(pageID, newPageBytes)
 		err := fm.Read(logMgr.currentBlock, pageManager, pageID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to read log block: %w", err)
