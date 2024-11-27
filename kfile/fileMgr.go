@@ -197,6 +197,13 @@ func (fm *FileMgr) Append(filename string) (*BlockId, error) {
 func (fm *FileMgr) Length(filename string) (int, error) {
 	return fm.lengthLocked(filename)
 }
+func (fm *FileMgr) NewLength(filename string) int {
+	locked, err := fm.lengthLocked(filename)
+	if err != nil {
+		return 0
+	}
+	return locked
+}
 func (fm *FileMgr) lengthLocked(filename string) (int, error) {
 	f, err := fm.getFile(filename)
 	if err != nil {
