@@ -66,5 +66,3 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 - **Edward Sciore** for *Database Design and Implementation*, which inspired this project.
 - The open-source Go community for guidance and tools.
 ```
-
-Feel free to modify this to better suit your repository’s specific details and goals. Let me know if you'd like further adjustments!
