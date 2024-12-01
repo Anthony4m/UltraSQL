@@ -98,7 +98,7 @@ func (fm *FileMgr) Read(blk *BlockId, p *PageManager, id PageID) error {
 
 	pmgr, err := p.GetPage(id)
 	if err != nil {
-		newPage := NewPage(fm.blocksize, blk.FileName())
+		newPage := NewPage(fm.blocksize)
 		p.SetPage(id, newPage)
 		pmgr = newPage
 	}
