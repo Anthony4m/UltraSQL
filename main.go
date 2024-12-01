@@ -28,10 +28,7 @@ func main() {
 	blk, err := fm.Append(Filename)
 	checkError(err, "Failed to append block")
 	fmt.Printf("Appended Block: %v\n", blk)
-
-	pageManager := kfile.NewPageManager(blockSize)
 	newPage := kfile.NewPage(blockSize)
-	pageID := kfile.NewPageId(kfile.BlockId{Filename: Filename, Blknum: blk.Number()})
 
 	err = newPage.SetInt(0, 42)
 	checkError(err, "Failed to set int")
@@ -50,9 +47,8 @@ func main() {
 	checkError(err, "Failed to write to block")
 
 	readPage := kfile.NewPage(blockSize)
-	pageManager.SetPage(pageID, readPage)
 
-	err = fm.Read(blk, pageManager, pageID)
+	err = fm.Read(blk, readPage)
 	checkError(err, "Failed to read from block")
 
 	intVal, err := readPage.GetInt(0)

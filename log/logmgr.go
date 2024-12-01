@@ -53,13 +53,25 @@ func (lm *LogMgr) flushLsn(lsn int) {
 	}
 }
 
+func (lm *LogMgr) flushAsync() {
+	go func() {
+		if err := lm.flush(); err != nil {
+			fmt.Printf("Async flush failed: %v\n", err)
+		}
+	}()
+}
+
 func (lm *LogMgr) Iterator() utils.Iterator[[]byte] {
 	lm.flush()
 	return utils.NewLogIterator(lm.fm, lm.currentBlock)
 }
 
-func (lm *LogMgr) flush() {
-	lm.fm.Write(lm.currentBlock, lm.logPage)
+func (lm *LogMgr) flush() error {
+	err := lm.fm.Write(lm.currentBlock, lm.logPage)
+	if err != nil {
+		return fmt.Errorf("failed to flush log block %s: %v", lm.currentBlock.FileName(), err)
+	}
+	return nil
 }
 
 func (lm *LogMgr) appendNewBlock() *kfile.BlockId {
@@ -87,4 +99,15 @@ func (lm *LogMgr) append(logrec []byte) int {
 	lm.logPage.SetInt(0, int(recpos))
 	lm.latestLSN += 1
 	return lm.latestLSN
+}
+
+func (lm *LogMgr) Checkpoint() error {
+	lm.mu.Lock()
+	defer lm.mu.Unlock()
+	err := lm.flush()
+	if err != nil {
+		return fmt.Errorf("failed to create checkpoint: %v", err)
+	}
+	fmt.Println("Checkpoint created.")
+	return nil
 }
