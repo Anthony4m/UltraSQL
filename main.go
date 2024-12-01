@@ -33,14 +33,14 @@ func main() {
 	err = newPage.SetInt(0, 42)
 	checkError(err, "Failed to set int")
 
-	err = newPage.SetString(4, "Hello, Go!")
+	err = newPage.SetString(4, "Helo, Go!")
 	checkError(err, "Failed to set string")
 
-	currentTime := time.Now()
+	currentTime := time.Date(2023, time.December, 1, 10, 30, 0, 0, time.UTC)
 	err = newPage.SetDate(15, currentTime)
 	checkError(err, "Failed to set date")
 
-	err = newPage.SetBool(50, true)
+	err = newPage.SetBool(50, false)
 	checkError(err, "Failed to set bool")
 
 	err = fm.Write(blk, newPage)
@@ -57,7 +57,7 @@ func main() {
 	strVal, err := readPage.GetString(4, len("Hello, Go!"))
 	checkError(err, "Failed to get string")
 
-	dateVal, err := readPage.GetDate(30)
+	dateVal, err := readPage.GetDate(15)
 	checkError(err, "Failed to get date")
 
 	boolVal, err := readPage.GetBool(50)

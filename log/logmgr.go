@@ -33,13 +33,11 @@ func newLogMgr(fm *kfile.FileMgr, logFile string) (*LogMgr, error) {
 		b := make([]byte, fm.BlockSize())
 		logMgr.currentBlock = kfile.NewBlockId(logFile, logMgr.logsize-1)
 		newPageBytes := kfile.NewPageFromBytes(b)
-		pageID := kfile.NewPageId(*logMgr.currentBlock)
-		pageManager.SetPage(pageID, newPageBytes)
-		err := fm.Read(logMgr.currentBlock, pageManager, pageID)
+		err := fm.Read(logMgr.currentBlock, newPageBytes)
 		if err != nil {
 			return nil, fmt.Errorf("failed to read log block: %w", err)
 		}
-		logMgr.logPage, err = pageManager.GetPage(pageID)
+		logMgr.logPage, err = pageManager.GetPage(newPageBytes.PageID())
 		if err != nil {
 			return nil, fmt.Errorf("failed to retrieve page from page manager: %w", err)
 		}

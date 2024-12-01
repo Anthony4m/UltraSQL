@@ -11,6 +11,22 @@ type PageManager struct {
 	mu       sync.RWMutex
 }
 
+var (
+	managerInstance *PageManager
+	once            sync.Once
+)
+
+// GetPageManager returns the singleton instance of the PageManager
+func GetPageManager(blockSize int) *PageManager {
+	once.Do(func() {
+		managerInstance = &PageManager{
+			pageSize: blockSize,
+			Pages:    make(map[uint64]*Page),
+		}
+	})
+	return managerInstance
+}
+
 func NewPageManager(pageSize int) *PageManager {
 	return &PageManager{
 		pageSize: pageSize,
