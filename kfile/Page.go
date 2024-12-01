@@ -3,6 +3,7 @@ package kfile
 import (
 	"encoding/binary"
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -22,6 +23,7 @@ var DefaultPageIDGenerator = &PageIDGenerator{
 type Page struct {
 	data   []byte
 	pageId int
+	mu     sync.RWMutex
 }
 
 const (
@@ -77,6 +79,8 @@ func (p *Page) SetPageID(id uint64) error {
 }
 
 func (p *Page) GetInt(offset int) (int32, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	if offset+4 > len(p.data) {
 		return 0, fmt.Errorf("%s: getting int", ErrOutOfBounds)
 	}
@@ -84,6 +88,8 @@ func (p *Page) GetInt(offset int) (int32, error) {
 }
 
 func (p *Page) SetInt(offset int, val int) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	if offset+4 > len(p.data) {
 		return fmt.Errorf("%s: setting int", ErrOutOfBounds)
 	}
@@ -92,6 +98,8 @@ func (p *Page) SetInt(offset int, val int) error {
 }
 
 func (p *Page) GetBytes(offset int) ([]byte, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	if offset > len(p.data) {
 		return nil, fmt.Errorf("%s: getting bytes", ErrOutOfBounds)
 	}
@@ -101,6 +109,8 @@ func (p *Page) GetBytes(offset int) ([]byte, error) {
 }
 
 func (p *Page) SetBytes(offset int, val []byte) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	length := len(val)
 	if offset+length > len(p.data) {
 		return fmt.Errorf("%s: setting bytes", ErrOutOfBounds)
@@ -110,6 +120,8 @@ func (p *Page) SetBytes(offset int, val []byte) error {
 }
 
 func (p *Page) GetString(offset int, length int) (string, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	if offset+length > len(p.data) {
 		return "", fmt.Errorf("%s: getting string", ErrOutOfBounds)
 	}
@@ -119,6 +131,8 @@ func (p *Page) GetString(offset int, length int) (string, error) {
 }
 
 func (p *Page) SetString(offset int, val string) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	length := len(val)
 	strBytes := make([]byte, length)
 	copy(strBytes, val)
@@ -131,6 +145,8 @@ func (p *Page) SetString(offset int, val string) error {
 }
 
 func (p *Page) SetBool(offset int, val bool) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	if offset+1 > len(p.data) {
 		return fmt.Errorf("%s: setting bool", ErrOutOfBounds)
 	}
@@ -143,6 +159,8 @@ func (p *Page) SetBool(offset int, val bool) error {
 }
 
 func (p *Page) GetBool(offset int) (bool, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	if offset+1 > len(p.data) {
 		return false, fmt.Errorf("%s: getting bool", ErrOutOfBounds)
 	}
@@ -153,6 +171,8 @@ func (p *Page) GetBool(offset int) (bool, error) {
 }
 
 func (p *Page) SetDate(offset int, val time.Time) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	if offset+8 > len(p.data) {
 		return fmt.Errorf("%s: setting date", ErrOutOfBounds)
 	}
@@ -162,6 +182,8 @@ func (p *Page) SetDate(offset int, val time.Time) error {
 }
 
 func (p *Page) GetDate(offset int) (time.Time, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	if offset+8 > len(p.data) {
 		return time.Unix(0, 0), fmt.Errorf("%s: getting date", ErrOutOfBounds)
 	}
