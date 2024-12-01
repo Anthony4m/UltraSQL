@@ -33,3 +33,17 @@ func (pm *PageManager) GetPage(id uint64) (*Page, error) {
 	}
 	return nil, fmt.Errorf("page not found")
 }
+
+func RegisterPage(pm *PageManager, page *Page) error {
+	pageId := page.PageID()
+	pm.SetPage(pageId, page)
+	return nil
+}
+
+func FindPage(pm *PageManager, pageId uint64) (*Page, bool) {
+	page, err := pm.GetPage(pageId)
+	if err != nil {
+		return nil, false
+	}
+	return page, true
+}

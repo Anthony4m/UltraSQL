@@ -39,7 +39,7 @@ func NewPage(blockSize int) *Page {
 	page := &Page{
 		data: make([]byte, blockSize),
 	}
-	pm := NewPageManager(blockSize)
+	pm := GetPageManager(blockSize)
 	pageId := DefaultPageIDGenerator.Next()
 	err := page.SetPageID(pageId)
 	if err != nil {
@@ -55,7 +55,7 @@ func NewPageFromBytes(b []byte) *Page {
 	page := &Page{
 		data: dataCopy,
 	}
-	pm := NewPageManager(len(b))
+	pm := GetPageManager(len(b))
 	pageId := DefaultPageIDGenerator.Next()
 	err := page.SetPageID(pageId)
 	if err != nil {
