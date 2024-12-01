@@ -32,7 +32,7 @@ func TestFileMgr(t *testing.T) {
 
 		// Write data
 		data := "Hello, SimpleDB!"
-		p := NewPage(blockSize, filename)
+		p := NewPage(blockSize)
 		err = p.SetString(0, data)
 		if err != nil {
 			t.Fatalf("Failed to set string in page: %v", err)
@@ -44,7 +44,7 @@ func TestFileMgr(t *testing.T) {
 		}
 
 		// Read data back
-		p2 := NewPage(blockSize, filename)
+		p2 := NewPage(blockSize)
 		pgmgr := NewPageManager(blockSize)
 		pId := NewPageId(BlockId{Filename: filename, Blknum: blk.Number()})
 		pgmgr.SetPage(pId, p2)
@@ -93,7 +93,7 @@ func TestFileMgr(t *testing.T) {
 
 		filename := "stats.db"
 		blk, _ := fm.Append(filename)
-		p := NewPage(100, filename)
+		p := NewPage(100)
 		pgmgr := NewPageManager(100)
 		pId := NewPageId(BlockId{Filename: filename, Blknum: blk.Number()})
 		pgmgr.SetPage(pId, p)
