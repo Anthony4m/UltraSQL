@@ -45,10 +45,8 @@ func TestFileMgr(t *testing.T) {
 
 		// Read data back
 		p2 := NewPage(blockSize)
-		pgmgr := NewPageManager(blockSize)
-		pId := NewPageId(BlockId{Filename: filename, Blknum: blk.Number()})
-		pgmgr.SetPage(pId, p2)
-		err = fm.Read(blk, pgmgr, pId)
+    fm.Read(blk, pgmgr, pId)
+		err = fm.Read(blk, p2)
 		if err != nil {
 			t.Fatalf("Failed to read block: %v", err)
 		}
@@ -94,13 +92,10 @@ func TestFileMgr(t *testing.T) {
 		filename := "stats.db"
 		blk, _ := fm.Append(filename)
 		p := NewPage(100)
-		pgmgr := NewPageManager(100)
-		pId := NewPageId(BlockId{Filename: filename, Blknum: blk.Number()})
-		pgmgr.SetPage(pId, p)
 
 		// Perform some reads and writes
 		fm.Write(blk, p)
-		fm.Read(blk, pgmgr, pId)
+		fm.Read(blk, p)
 
 		if fm.BlocksWritten() != 1 {
 			t.Errorf("Expected 1 block written, got %d", fm.BlocksWritten())
