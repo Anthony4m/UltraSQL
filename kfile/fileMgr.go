@@ -27,6 +27,7 @@ type ReadWriteLogEntry struct {
 }
 
 const maxLogEntries = 1000
+const format = "failed to seek to offset %d in file %s: %v"
 
 func NewFileMgr(dbDirectory string, blocksize int) (*FileMgr, error) {
 	fm := &FileMgr{
@@ -82,7 +83,7 @@ func (fm *FileMgr) getFile(filename string) (*os.File, error) {
 	return f, nil
 }
 
-func (fm *FileMgr) Read(blk *BlockId, p *PageManager, id PageID) error {
+func (fm *FileMgr) Read(blk *BlockId, p *Page) error {
 	fm.mutex.RLock()
 	defer fm.mutex.RUnlock()
 	f, err := fm.getFile(blk.FileName())
@@ -93,17 +94,10 @@ func (fm *FileMgr) Read(blk *BlockId, p *PageManager, id PageID) error {
 	offset := int64(blk.Number() * fm.blocksize)
 	_, err = f.Seek(offset, 0)
 	if err != nil {
-		return fmt.Errorf("failed to seek to offset %d in file %s: %v", offset, blk.FileName(), err)
-	}
 
-	pmgr, err := p.GetPage(id)
-	if err != nil {
-		newPage := NewPage(fm.blocksize, blk.FileName())
-		p.SetPage(id, newPage)
-		pmgr = newPage
+		return fmt.Errorf(format, offset, blk.FileName(), err)
 	}
-
-	bytesRead, err := f.Read(pmgr.Contents())
+	bytesRead, err := f.Read(p.Contents())
 	if err != nil {
 		return fmt.Errorf("failed to read block %v: %v", blk, err)
 	}
@@ -134,7 +128,7 @@ func (fm *FileMgr) Write(blk *BlockId, p *Page) error {
 	offset := int64(blk.Number() * fm.blocksize)
 	_, err = f.Seek(offset, 0)
 	if err != nil {
-		return fmt.Errorf("failed to seek to offset %d in file %s: %v", offset, blk.FileName(), err)
+		return fmt.Errorf(format, offset, blk.FileName(), err)
 	}
 	bytesWritten, err := f.Write(p.Contents())
 	if err != nil {

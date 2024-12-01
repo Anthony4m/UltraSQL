@@ -5,18 +5,17 @@ import (
 )
 
 func TestPage(t *testing.T) {
-	Filename := "test.db"
 	t.Run("NewPage creates page with correct size", func(t *testing.T) {
 
 		blockSize := 4096
-		page := NewPage(blockSize, Filename)
+		page := NewPage(blockSize)
 		if len(page.data) != blockSize {
 			t.Errorf("expected page size %d, got %d", blockSize, len(page.data))
 		}
 	})
 
 	t.Run("Integer operations work correctly", func(t *testing.T) {
-		page := NewPage(100, Filename)
+		page := NewPage(100)
 		testVal := int32(42)
 
 		err := page.SetInt(0, int(testVal))

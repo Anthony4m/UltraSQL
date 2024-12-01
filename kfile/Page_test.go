@@ -1,6 +1,10 @@
 package kfile
 
-import "testing"
+import (
+	"sync"
+	"testing"
+	"time"
+)
 
 func TestBlockId(t *testing.T) {
 	t.Run("Creation and basic properties", func(t *testing.T) {
@@ -105,4 +109,88 @@ func TestBlockId(t *testing.T) {
 			t.Error("IsFirst returned true for non-zero block")
 		}
 	})
+}
+
+func TestPage_SetDateAndGetDate(t *testing.T) {
+	blockSize := 128
+	page := NewPage(blockSize)
+	if page == nil {
+		t.Fatalf("Failed to create page")
+	}
+
+	// Test valid date set and get
+	offset := 16
+	expectedDate := time.Date(2023, time.December, 1, 10, 30, 0, 0, time.UTC)
+	err := page.SetDate(offset, expectedDate)
+	if err != nil {
+		t.Fatalf("SetDate failed: %v", err)
+	}
+
+	retrievedDate, err := page.GetDate(offset)
+	if err != nil {
+		t.Fatalf("GetDate failed: %v", err)
+	}
+	if !retrievedDate.Equal(expectedDate) {
+		t.Errorf("Expected date %v, got %v", expectedDate, retrievedDate)
+	}
+
+	// Test out-of-bounds set
+	outOfBoundsOffset := blockSize - 4 // Not enough space for 8 bytes
+	err = page.SetDate(outOfBoundsOffset, expectedDate)
+	if err == nil {
+		t.Errorf("Expected error for out-of-bounds SetDate, got nil")
+	}
+
+	// Test out-of-bounds get
+	_, err = page.GetDate(outOfBoundsOffset)
+	if err == nil {
+		t.Errorf("Expected error for out-of-bounds GetDate, got nil")
+	}
+}
+
+func TestPage_SetDate_ThreadSafety(t *testing.T) {
+	blockSize := 128
+	page := NewPage(blockSize)
+	if page == nil {
+		t.Fatalf("Failed to create page")
+	}
+
+	offset := 16
+	expectedDate := time.Date(2023, time.December, 1, 10, 30, 0, 0, time.UTC)
+
+	// Run concurrent SetDate operations
+	const goroutines = 10
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	for i := 0; i < goroutines; i++ {
+		go func() {
+			defer wg.Done()
+			_ = page.SetDate(offset, expectedDate)
+		}()
+	}
+	wg.Wait()
+
+	// Ensure the final value is correct
+	retrievedDate, err := page.GetDate(offset)
+	if err != nil {
+		t.Fatalf("GetDate failed after concurrent SetDate: %v", err)
+	}
+	if !retrievedDate.Equal(expectedDate) {
+		t.Errorf("Expected date %v, got %v after concurrent operations", expectedDate, retrievedDate)
+	}
+}
+
+func TestPage_GetDate_InvalidOffset(t *testing.T) {
+	blockSize := 128
+	page := NewPage(blockSize)
+	if page == nil {
+		t.Fatalf("Failed to create page")
+	}
+
+	// Test invalid offset for GetDate
+	invalidOffset := blockSize + 1
+	_, err := page.GetDate(invalidOffset)
+	if err == nil {
+		t.Errorf("Expected error for invalid GetDate offset, got nil")
+	}
 }
