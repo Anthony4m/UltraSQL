@@ -191,7 +191,7 @@ func (p *Page) GetDate(offset int) (time.Time, error) {
 	return time.Unix(int64(timestamp), 0), nil
 }
 
-func MaxLength(strlen int) int {
+func (p *Page) MaxLength(strlen int) int {
 	bytesPerChar := 1
 	return 4 + (strlen * bytesPerChar)
 }

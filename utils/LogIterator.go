@@ -2,7 +2,6 @@ package utils
 
 import (
 	"awesomeDB/kfile"
-	"unsafe"
 )
 
 type LogIterator struct {
@@ -22,21 +21,6 @@ func NewLogIterator(fm *kfile.FileMgr, blk *kfile.BlockId) Iterator[[]byte] {
 	}
 	logIterator.moveToBlock(blk)
 	return logIterator
-}
-
-func (lg *LogIterator) hasNext() bool {
-	return lg.currentPos < lg.fm.BlockSize() || lg.blk.Number() > 0
-}
-
-func (lg *LogIterator) next() []byte {
-	if lg.currentPos == lg.fm.BlockSize() {
-		lg.blk = kfile.NewBlockId(lg.blk.FileName(), lg.blk.Number()-1)
-		lg.moveToBlock(lg.blk)
-	}
-
-	rec, _ := lg.p.GetBytes(lg.currentPos)
-	lg.currentPos += int(unsafe.Sizeof(0)) + len(rec)
-	return rec
 }
 
 func (lg *LogIterator) moveToBlock(blk *kfile.BlockId) {
