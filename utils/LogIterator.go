@@ -33,7 +33,7 @@ func (it *LogIterator) Next() ([]byte, error) {
 	rec, err := it.p.GetBytes(it.currentPos)
 	recLen := string(rec)
 	npos := MaxLength(len(recLen))
-	b := make([]byte, npos+4)
+	b := make([]byte, npos+int(unsafe.Sizeof(0)))
 	copy(b, rec)
 	if err != nil {
 		panic(err)
