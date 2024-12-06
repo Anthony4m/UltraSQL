@@ -1,6 +1,8 @@
 package kfile
 
 import (
+	"bytes"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -193,4 +195,194 @@ func TestPage_GetDate_InvalidOffset(t *testing.T) {
 	if err == nil {
 		t.Errorf("Expected error for invalid GetDate offset, got nil")
 	}
+}
+
+// Test GetBytes method
+func TestGetBytes(t *testing.T) {
+	testCases := []struct {
+		name           string
+		initialData    []byte
+		offset         int
+		expectedResult []byte
+		expectedError  error
+	}{
+		{
+			name:           "Normal retrieval",
+			initialData:    []byte{1, 2, 3, 4, 5},
+			offset:         2,
+			expectedResult: []byte{3, 4, 5},
+			expectedError:  nil,
+		},
+		{
+			name:           "Retrieval from start",
+			initialData:    []byte{1, 2, 3, 4, 5},
+			offset:         0,
+			expectedResult: []byte{1, 2, 3, 4, 5},
+			expectedError:  nil,
+		},
+		{
+			name:           "Out of bounds offset",
+			initialData:    []byte{1, 2, 3},
+			offset:         4,
+			expectedResult: nil,
+			expectedError:  fmt.Errorf("%s: getting bytes", ErrOutOfBounds),
+		},
+		{
+			name:           "Empty slice retrieval",
+			initialData:    []byte{},
+			offset:         0,
+			expectedResult: []byte{},
+			expectedError:  fmt.Errorf("%s: getting bytes", ErrOutOfBounds),
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			p := &Page{
+				data: make([]byte, len(tc.initialData)),
+			}
+			copy(p.data, tc.initialData)
+
+			result, err := p.GetBytes(tc.offset)
+
+			// Check error
+			if tc.expectedError != nil {
+				if err == nil {
+					t.Fatalf("Expected error %v, got nil", tc.expectedError)
+				}
+				if err.Error() != tc.expectedError.Error() {
+					t.Fatalf("Expected error %v, got %v", tc.expectedError, err)
+				}
+			} else if err != nil {
+				t.Fatalf("Unexpected error: %v", err)
+			}
+
+			// Check result
+			if !bytes.Equal(result, tc.expectedResult) {
+				t.Fatalf("Expected %v, got %v", tc.expectedResult, result)
+			}
+
+			// Ensure original data is unchanged
+			originalData := make([]byte, len(tc.initialData))
+			copy(originalData, tc.initialData)
+			if !bytes.Equal(p.data, originalData) {
+				t.Fatalf("Original data modified: expected %v, got %v", originalData, p.data)
+			}
+		})
+	}
+}
+
+// Test SetBytes method
+func TestSetBytes(t *testing.T) {
+	testCases := []struct {
+		name           string
+		initialData    []byte
+		offset         int
+		valueToSet     []byte
+		expectedResult []byte
+		expectedError  error
+	}{
+		{
+			name:           "Normal setting",
+			initialData:    []byte{1, 2, 3, 4, 0},
+			offset:         2,
+			valueToSet:     []byte{10, 11},
+			expectedResult: []byte{1, 2, 10, 11, 0},
+			expectedError:  nil,
+		},
+		{
+			name:           "Setting at start",
+			initialData:    []byte{1, 2, 3, 4, 5},
+			offset:         0,
+			valueToSet:     []byte{10, 11},
+			expectedResult: []byte{10, 11, 0, 4, 5},
+			expectedError:  nil,
+		},
+		{
+			name:           "Out of bounds setting",
+			initialData:    []byte{1, 2, 3},
+			offset:         2,
+			valueToSet:     []byte{10, 11, 12},
+			expectedResult: nil,
+			expectedError:  fmt.Errorf("%s: setting bytes", ErrOutOfBounds),
+		},
+		{
+			name:           "Empty slice setting",
+			initialData:    []byte{},
+			offset:         0,
+			valueToSet:     []byte{},
+			expectedResult: []byte{},
+			expectedError:  nil,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			p := &Page{
+				data: make([]byte, len(tc.initialData)),
+			}
+			copy(p.data, tc.initialData)
+
+			err := p.SetBytes(tc.offset, tc.valueToSet)
+
+			// Check error
+			if tc.expectedError != nil {
+				if err == nil {
+					t.Fatalf("Expected error %v, got nil", tc.expectedError)
+				}
+				if err.Error() != tc.expectedError.Error() {
+					t.Fatalf("Expected error %v, got %v", tc.expectedError, err)
+				}
+				return
+			} else if err != nil {
+				t.Fatalf("Unexpected error: %v", err)
+			}
+
+			// Check result
+			if tc.expectedResult != nil && !bytes.Equal(p.data, tc.expectedResult) {
+				t.Fatalf("Expected %v, got %v", tc.expectedResult, p.data)
+			}
+		})
+	}
+}
+
+// Concurrency test for SetBytes and GetBytes
+func TestConcurrentAccess(t *testing.T) {
+	p := &Page{
+		data: make([]byte, 100),
+	}
+
+	// Fill with initial data
+	for i := range p.data {
+		p.data[i] = byte(i)
+	}
+
+	// Number of concurrent operations
+	numOperations := 1000
+
+	// Use wait group to synchronize goroutines
+	var wg sync.WaitGroup
+	wg.Add(numOperations * 2)
+
+	// Concurrent setters
+	for i := 0; i < numOperations; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			val := []byte{byte(idx), byte(idx + 1)}
+			offset := idx % (len(p.data) - 2)
+			_ = p.SetBytes(offset, val)
+		}(i)
+	}
+
+	// Concurrent getters
+	for i := 0; i < numOperations; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			offset := idx % len(p.data)
+			_, _ = p.GetBytes(offset)
+		}(i)
+	}
+
+	// Wait for all operations to complete
+	wg.Wait()
 }

@@ -8,7 +8,6 @@ import (
 )
 
 func TestFileMgr(t *testing.T) {
-	// Create temporary directory for tests
 	tempDir := filepath.Join(os.TempDir(), "simpledb_test_"+time.Now().Format("20060102150405"))
 
 	t.Run("Basic FileMgr operations", func(t *testing.T) {
@@ -50,13 +49,13 @@ func TestFileMgr(t *testing.T) {
 			t.Fatalf("Failed to read block: %v", err)
 		}
 
-		readData, err := p2.GetString(0, len(data))
+		readData, err := p2.GetString(0)
 		if err != nil {
 			t.Fatalf("Failed to get string from page: %v", err)
 		}
 
 		if readData != data {
-			t.Errorf("Data mismatch: expected %s, got %s", data, readData)
+			t.Errorf("data mismatch: expected %s, got %s", data, readData)
 		}
 	})
 
@@ -115,4 +114,90 @@ func TestFileMgr(t *testing.T) {
 			t.Errorf("Expected 1 read log entry, got %d", len(readLog))
 		}
 	})
+}
+
+func TestLengthLocked(t *testing.T) {
+	// Create a temporary directory for test files
+	tempDir, err := os.MkdirTemp("", "filemgr-test-")
+	if err != nil {
+		t.Fatalf("Failed to create temp directory: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Test cases
+	testCases := []struct {
+		name           string
+		initialContent []byte
+		blockSize      int
+		expectedBlocks int
+		expectedError  bool
+	}{
+		{
+			name:           "Empty File",
+			initialContent: []byte{},
+			blockSize:      512,
+			expectedBlocks: 0,
+			expectedError:  false,
+		},
+		{
+			name:           "Empty File",
+			initialContent: make([]byte, 512),
+			blockSize:      512,
+			expectedBlocks: 1,
+			expectedError:  false,
+		},
+		{
+			name:           "Empty File",
+			initialContent: make([]byte, 256),
+			blockSize:      512,
+			expectedBlocks: 0,
+			expectedError:  false,
+		},
+		{
+			name:           "Empty File",
+			initialContent: make([]byte, 1536),
+			blockSize:      512,
+			expectedBlocks: 3,
+			expectedError:  false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Create a test file with specific content
+			filename := filepath.Join(tempDir, tc.name+".dat")
+			err := os.WriteFile(filename, tc.initialContent, 0644)
+			if err != nil {
+				t.Fatalf("Failed to create test file: %v", err)
+			}
+
+			// Create FileMgr instance
+			fm := &FileMgr{
+				dbDirectory: tempDir,
+				blocksize:   tc.blockSize,
+				openFiles:   make(map[string]*os.File),
+				isNew:       false,
+			}
+
+			// Call lengthLocked
+			numBlocks, err := fm.lengthLocked(tc.name + ".dat")
+
+			// Check for unexpected errors
+			if tc.expectedError && err == nil {
+				t.Errorf("Expected an error, but got none")
+			}
+
+			// Check number of blocks
+			if numBlocks != tc.expectedBlocks {
+				t.Errorf("Unexpected number of blocks. Expected %d, got %d",
+					tc.expectedBlocks, numBlocks)
+			}
+
+			// Ensure file is closed after the test
+			if f, exists := fm.openFiles[tc.name+".dat"]; exists {
+				f.Close()
+				delete(fm.openFiles, tc.name+".dat")
+			}
+		})
+	}
 }

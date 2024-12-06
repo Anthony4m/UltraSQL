@@ -145,8 +145,6 @@ func TestBlock(t *testing.T) {
 	})
 }
 
-// Let's also add some benchmarks to ensure our hash function performs well:
-
 func BenchmarkBlockId(b *testing.B) {
 	b.Run("HashCode", func(b *testing.B) {
 		blk := NewBlockId("test.db", 1000)
