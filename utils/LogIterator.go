@@ -2,6 +2,7 @@ package utils
 
 import (
 	"awesomeDB/kfile"
+	"unsafe"
 )
 
 type LogIterator struct {
@@ -9,38 +10,41 @@ type LogIterator struct {
 	blk        *kfile.BlockId
 	p          *kfile.Page
 	currentPos int
-	boundary   int32
+	boundary   int
 }
 
-func NewLogIterator(fm *kfile.FileMgr, blk *kfile.BlockId) Iterator[[]byte] {
+func NewLogIterator(fm *kfile.FileMgr, blk *kfile.BlockId) *LogIterator {
 	b := make([]byte, fm.BlockSize())
-	logIterator := &LogIterator{
-		fm:  fm,
-		blk: blk,
-		p:   kfile.NewPageFromBytes(b),
+	p := kfile.NewPageFromBytes(b)
+	iterator := &LogIterator{fm: fm, blk: blk, p: p}
+	iterator.moveToBlock(blk)
+	return iterator
+}
+
+func (it *LogIterator) HasNext() bool {
+	return it.currentPos < it.fm.BlockSize() && it.blk.Number() > 0
+}
+
+func (it *LogIterator) Next() ([]byte, error) {
+	if it.currentPos == it.fm.BlockSize() {
+		it.blk = kfile.NewBlockId(it.blk.FileName(), it.blk.Number()-1)
+		it.moveToBlock(it.blk)
 	}
-	logIterator.moveToBlock(blk)
-	return logIterator
-}
-
-func (lg *LogIterator) moveToBlock(blk *kfile.BlockId) {
-	lg.fm.Read(blk, lg.p)
-	lg.boundary, _ = lg.p.GetInt(0)
-	lg.currentPos = int(lg.boundary)
-
-}
-
-func (lg *LogIterator) HasNext() bool {
-	return lg.currentPos < int(lg.boundary)
-}
-
-func (lg *LogIterator) Next() []byte {
-	if !lg.HasNext() {
-		panic("No more elements")
+	rec, err := it.p.GetBytes(it.currentPos)
+	recLen := string(rec)
+	npos := MaxLength(len(recLen))
+	b := make([]byte, npos+4)
+	copy(b, rec)
+	if err != nil {
+		panic(err)
 	}
-	reclen, _ := lg.p.GetInt(lg.currentPos)
-	lg.currentPos += 4
-	record, _ := lg.p.GetBytes(lg.currentPos)
-	lg.currentPos += int(reclen)
-	return record
+	it.currentPos += int(unsafe.Sizeof(0)) + len(b)
+
+	return b, nil
+}
+
+func (it *LogIterator) moveToBlock(blk *kfile.BlockId) {
+	it.fm.Read(blk, it.p)
+	it.boundary, _ = it.p.GetInt(0)
+	it.currentPos = it.boundary
 }
