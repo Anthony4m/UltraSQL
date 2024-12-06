@@ -54,7 +54,7 @@ func main() {
 	intVal, err := readPage.GetInt(0)
 	checkError(err, "Failed to get int")
 
-	strVal, err := readPage.GetString(4, len("Hello, Go!"))
+	strVal, err := readPage.GetString(4)
 	checkError(err, "Failed to get string")
 
 	dateVal, err := readPage.GetDate(15)
