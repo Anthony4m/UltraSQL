@@ -2,6 +2,7 @@ package utils
 
 import (
 	"awesomeDB/kfile"
+	"fmt"
 	"unsafe"
 )
 
@@ -31,16 +32,14 @@ func (it *LogIterator) Next() ([]byte, error) {
 		it.moveToBlock(it.blk)
 	}
 	rec, err := it.p.GetBytes(it.currentPos)
+	if err != nil {
+		_ = fmt.Errorf("error while getting bytes %s", err)
+	}
 	recLen := string(rec)
 	npos := MaxLength(len(recLen))
-	b := make([]byte, npos+int(unsafe.Sizeof(0)))
-	copy(b, rec)
-	if err != nil {
-		panic(err)
-	}
-	it.currentPos += int(unsafe.Sizeof(0)) + len(b)
+	it.currentPos += int(unsafe.Sizeof(0)) + npos
 
-	return b, nil
+	return rec, nil
 }
 
 func (it *LogIterator) moveToBlock(blk *kfile.BlockId) {
