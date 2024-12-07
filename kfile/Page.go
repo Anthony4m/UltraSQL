@@ -1,10 +1,12 @@
 package kfile
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"sync"
 	"time"
+	"unsafe"
 )
 
 type Page struct {
@@ -60,15 +62,32 @@ func (p *Page) GetBytes(offset int) ([]byte, error) {
 		return nil, fmt.Errorf("%s: getting bytes", ErrOutOfBounds)
 	}
 
-	// Find the end of the segment (delimiter)
 	end := offset
 	for end < len(p.data) && p.data[end] != 0 {
 		end++
 	}
 
-	// Copy data between offset and end
 	dataCopy := make([]byte, end-offset)
 	copy(dataCopy, p.data[offset:end])
+
+	return dataCopy, nil
+}
+
+func (p *Page) GetBytesWithLen(offset int) ([]byte, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if offset > len(p.data) {
+		return nil, fmt.Errorf("%s: getting bytes", ErrOutOfBounds)
+	}
+
+	end := offset
+	for end < len(p.data) && p.data[end] != 0 {
+		end++
+	}
+
+	dataCopy := make([]byte, end+int(unsafe.Sizeof(0))-offset)
+	copy(dataCopy, p.data[offset:end+int(unsafe.Sizeof(0))])
 
 	return dataCopy, nil
 }
@@ -78,22 +97,18 @@ func (p *Page) SetBytes(offset int, val []byte) error {
 	defer p.mu.Unlock()
 
 	length := len(val)
-	// Check if there's enough space for the data and the delimiter
 	if length != 0 {
-		if offset+length+1 > len(p.data) { // +1 for the delimiter
+		if offset+length+1 > len(p.data) {
 			return fmt.Errorf("%s: setting bytes", ErrOutOfBounds)
 		}
 
-		// Clear the buffer in the target range
-		for i := 0; i < length+1; i++ { // +1 to clear the delimiter space
+		for i := 0; i < length+1; i++ {
 			p.data[offset+i] = 0
 		}
 
-		// Copy the new value
 		copy(p.data[offset:], val)
 
-		// Set the delimiter
-		p.data[offset+length] = 0 // Null byte as a delimiter
+		p.data[offset+length] = 0
 	}
 
 	return nil
@@ -109,7 +124,28 @@ func (p *Page) GetString(offset int) (string, error) {
 		return "", fmt.Errorf("error occured %s", err)
 	}
 
-	str := string(b) // Convert bytes to string
+	str := string(b)
+	return str, nil
+}
+
+func (p *Page) GetStringWithOffset(offset int) (string, error) {
+	if offset > len(p.data) {
+		return "", fmt.Errorf("%s: getting string", ErrOutOfBounds)
+	}
+
+	b, err := p.GetBytesWithLen(offset)
+	if err != nil {
+		return "", fmt.Errorf("error occurred %s", err)
+	}
+
+	// Check if there are at least 4 bytes for the offset
+	if len(b) < 4 {
+		return "", fmt.Errorf("insufficient bytes to extract string")
+	}
+	stringBytes := b[:len(b)-4]
+	trimmedBytes := bytes.TrimRight(stringBytes, "\x00")
+
+	str := string(trimmedBytes)
 	return str, nil
 }
 

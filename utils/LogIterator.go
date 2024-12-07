@@ -31,7 +31,7 @@ func (it *LogIterator) Next() ([]byte, error) {
 		it.blk = kfile.NewBlockId(it.blk.FileName(), it.blk.Number()-1)
 		it.moveToBlock(it.blk)
 	}
-	rec, err := it.p.GetBytes(it.currentPos)
+	rec, err := it.p.GetBytesWithLen(it.currentPos)
 	if err != nil {
 		_ = fmt.Errorf("error while getting bytes %s", err)
 	}
