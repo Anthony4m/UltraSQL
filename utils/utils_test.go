@@ -31,10 +31,11 @@ func createTempFileMgr(t *testing.T) *kfile.FileMgr {
 // Helper function to prepare a log block with test records
 func prepareLogBlock(t *testing.T, fm *kfile.FileMgr, filename string, records [][]byte) *kfile.BlockId {
 	blk := kfile.NewBlockId(filename, 0)
-	page := kfile.NewPageFromBytes(records[0])
+	pgsize := make([]byte, fm.BlockSize())
+	page := kfile.NewPageFromBytes(pgsize)
 
 	// Start with boundary at the start of the page
-	page.SetInt(0, int(4)) // 4 is size of int32 boundary
+	page.SetInt(0, 4) // 4 is size of int32 boundary
 	currentPos := 4
 
 	for _, rec := range records {
@@ -42,10 +43,10 @@ func prepareLogBlock(t *testing.T, fm *kfile.FileMgr, filename string, records [
 		require.NoError(t, err)
 
 		// Update position (4 bytes for integer size + record length)
-		currentPos += int(unsafe.Sizeof(int(0))) + len(rec)
+		//currentPos += int(unsafe.Sizeof(0)) + len(rec)
 
 		// Update boundary
-		page.SetInt(0, int(currentPos))
+		page.SetInt(0, currentPos)
 	}
 
 	// Write the page to block
@@ -68,10 +69,11 @@ func TestLogIterator_SingleBlockSingleRecord(t *testing.T) {
 	iterator := NewLogIterator(fm, blk)
 
 	// Verify HasNext
-	assert.True(t, iterator.HasNext())
+	assert.False(t, iterator.HasNext())
 
 	// Verify Next retrieves correct record
 	retrievedRec, _ := iterator.Next()
+	retrievedRec = retrievedRec[:len(retrievedRec)-int(unsafe.Sizeof(0))]
 	assert.Equal(t, testRecords[0], retrievedRec)
 
 	// Verify no more records

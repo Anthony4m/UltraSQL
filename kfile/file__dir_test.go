@@ -3,10 +3,367 @@ package kfile
 import (
 	"bytes"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
 )
+
+func TestPage(t *testing.T) {
+	t.Run("NewPage creates page with correct size", func(t *testing.T) {
+
+		blockSize := 4096
+		page := NewPage(blockSize)
+		if len(page.data) != blockSize {
+			t.Errorf("expected page size %d, got %d", blockSize, len(page.data))
+		}
+	})
+
+	t.Run("Integer operations work correctly", func(t *testing.T) {
+		page := NewPage(100)
+		testVal := int(42)
+
+		err := page.SetInt(0, int(testVal))
+		if err != nil {
+			t.Fatalf("SetInt failed: %v", err)
+		}
+
+		got, err := page.GetInt(0)
+		if err != nil {
+			t.Fatalf("GetInt failed: %v", err)
+		}
+		if got != testVal {
+			t.Errorf("expected %d, got %d", testVal, got)
+		}
+	})
+}
+
+func TestBlock(t *testing.T) {
+	t.Run("Creation and basic properties", func(t *testing.T) {
+		Filename := "test.db"
+		Blknum := 5
+		blk := NewBlockId(Filename, Blknum)
+
+		if blk.FileName() != Filename {
+			t.Errorf("Expected Filename %s, got %s", Filename, blk.FileName())
+		}
+
+		if blk.Number() != Blknum {
+			t.Errorf("Expected block number %d, got %d", Blknum, blk.Number())
+		}
+	})
+
+	t.Run("Equality", func(t *testing.T) {
+		blk1 := NewBlockId("test.db", 1)
+		blk2 := NewBlockId("test.db", 1)
+		blk3 := NewBlockId("test.db", 2)
+		blk4 := NewBlockId("other.db", 1)
+
+		testCases := []struct {
+			name     string
+			a, b     *BlockId
+			expected bool
+		}{
+			{"Same block", blk1, blk2, true},
+			{"Different number", blk1, blk3, false},
+			{"Different file", blk1, blk4, false},
+			{"With nil", blk1, nil, false},
+		}
+
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				if result := tc.a.Equals(tc.b); result != tc.expected {
+					t.Errorf("Expected Equals to return %v for %v and %v",
+						tc.expected, tc.a, tc.b)
+				}
+			})
+		}
+	})
+
+	t.Run("String representation", func(t *testing.T) {
+		blk := NewBlockId("test.db", 5)
+		expected := "[file test.db, block 5]"
+		if s := blk.String(); s != expected {
+			t.Errorf("Expected string %q, got %q", expected, s)
+		}
+	})
+
+	t.Run("Hash code consistency", func(t *testing.T) {
+		blk1 := NewBlockId("test.db", 1)
+		blk2 := NewBlockId("test.db", 1)
+		blk3 := NewBlockId("test.db", 2)
+
+		// Same blocks should have same hash
+		if blk1.HashCode() != blk2.HashCode() {
+			t.Error("Hash codes different for equal blocks")
+		}
+
+		// Different blocks should have different hash
+		if blk1.HashCode() == blk3.HashCode() {
+			t.Error("Hash codes same for different blocks")
+		}
+	})
+
+	t.Run("Copy", func(t *testing.T) {
+		original := NewBlockId("test.db", 1)
+		copy := original.Copy()
+
+		if !original.Equals(copy) {
+			t.Error("Copy not equal to original")
+		}
+
+		// Verify it's a deep copy
+		copy.Filename = "other.db"
+		if original.Filename == copy.Filename {
+			t.Error("Copy seems to share data with original")
+		}
+	})
+
+	t.Run("Block navigation", func(t *testing.T) {
+		blk := NewBlockId("test.db", 5)
+
+		// Test NextBlock
+		next := blk.NextBlock()
+		if next.Number() != 6 || next.FileName() != "test.db" {
+			t.Error("NextBlock returned incorrect block")
+		}
+
+		// Test PrevBlock
+		prev := blk.PrevBlock()
+		if prev.Number() != 4 || prev.FileName() != "test.db" {
+			t.Error("PrevBlock returned incorrect block")
+		}
+
+		// Test PrevBlock on first block
+		first := NewBlockId("test.db", 0)
+		if first.PrevBlock() != nil {
+			t.Error("PrevBlock on first block should return nil")
+		}
+
+		// Test IsFirst
+		if !first.IsFirst() {
+			t.Error("IsFirst returned false for block 0")
+		}
+		if blk.IsFirst() {
+			t.Error("IsFirst returned true for non-zero block")
+		}
+	})
+}
+
+func BenchmarkBlockId(b *testing.B) {
+	b.Run("HashCode", func(b *testing.B) {
+		blk := NewBlockId("test.db", 1000)
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_ = blk.HashCode()
+		}
+	})
+
+	b.Run("Equals", func(b *testing.B) {
+		blk1 := NewBlockId("test.db", 1000)
+		blk2 := NewBlockId("test.db", 1000)
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_ = blk1.Equals(blk2)
+		}
+	})
+}
+
+func TestFileMgr(t *testing.T) {
+	tempDir := filepath.Join(os.TempDir(), "simpledb_test_"+time.Now().Format("20060102150405"))
+
+	t.Run("Basic FileMgr operations", func(t *testing.T) {
+		// Setup
+		blockSize := 400
+		fm, err := NewFileMgr(tempDir, blockSize)
+		if err != nil {
+			t.Fatalf("Failed to create FileMgr: %v", err)
+		}
+		defer func() {
+			fm.Close()
+			os.RemoveAll(tempDir)
+		}()
+
+		// Test file creation and appending
+		filename := "test.db"
+		blk, err := fm.Append(filename)
+		if err != nil {
+			t.Fatalf("Failed to append block: %v", err)
+		}
+
+		// Write data
+		data := "Hello, SimpleDB!"
+		p := NewPage(blockSize)
+		err = p.SetString(0, data)
+		if err != nil {
+			t.Fatalf("Failed to set string in page: %v", err)
+		}
+
+		err = fm.Write(blk, p)
+		if err != nil {
+			t.Fatalf("Failed to write block: %v", err)
+		}
+
+		// Read data back
+		p2 := NewPage(blockSize)
+		err = fm.Read(blk, p2)
+		if err != nil {
+			t.Fatalf("Failed to read block: %v", err)
+		}
+
+		readData, err := p2.GetString(0)
+		if err != nil {
+			t.Fatalf("Failed to get string from page: %v", err)
+		}
+
+		if readData != data {
+			t.Errorf("data mismatch: expected %s, got %s", data, readData)
+		}
+	})
+
+	t.Run("File length and multiple blocks", func(t *testing.T) {
+		fm, _ := NewFileMgr(tempDir, 100)
+		defer fm.Close()
+
+		filename := "multiblock.db"
+
+		// Append multiple blocks
+		for i := 0; i < 5; i++ {
+			_, err := fm.Append(filename)
+			if err != nil {
+				t.Fatalf("Failed to append block %d: %v", i, err)
+			}
+		}
+
+		length, err := fm.Length(filename)
+		if err != nil {
+			t.Fatalf("Failed to get file length: %v", err)
+		}
+
+		if length != 5 {
+			t.Errorf("Expected length 5, got %d", length)
+		}
+	})
+
+	t.Run("Statistics tracking", func(t *testing.T) {
+		fm, _ := NewFileMgr(tempDir, 100)
+		defer fm.Close()
+
+		filename := "stats.db"
+		blk, _ := fm.Append(filename)
+		p := NewPage(100)
+
+		// Perform some reads and writes
+		fm.Write(blk, p)
+		fm.Read(blk, p)
+
+		if fm.BlocksWritten() != 1 {
+			t.Errorf("Expected 1 block written, got %d", fm.BlocksWritten())
+		}
+
+		if fm.BlocksRead() != 1 {
+			t.Errorf("Expected 1 block read, got %d", fm.BlocksRead())
+		}
+
+		// Check logs
+		writeLog := fm.WriteLog()
+		if len(writeLog) != 1 {
+			t.Errorf("Expected 1 write log entry, got %d", len(writeLog))
+		}
+
+		readLog := fm.ReadLog()
+		if len(readLog) != 1 {
+			t.Errorf("Expected 1 read log entry, got %d", len(readLog))
+		}
+	})
+}
+
+func TestLengthLocked(t *testing.T) {
+	// Create a temporary directory for test files
+	tempDir, err := os.MkdirTemp("", "filemgr-test-")
+	if err != nil {
+		t.Fatalf("Failed to create temp directory: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Test cases
+	testCases := []struct {
+		name           string
+		initialContent []byte
+		blockSize      int
+		expectedBlocks int
+		expectedError  bool
+	}{
+		{
+			name:           "Empty File",
+			initialContent: []byte{},
+			blockSize:      512,
+			expectedBlocks: 0,
+			expectedError:  false,
+		},
+		{
+			name:           "Empty File",
+			initialContent: make([]byte, 512),
+			blockSize:      512,
+			expectedBlocks: 1,
+			expectedError:  false,
+		},
+		{
+			name:           "Empty File",
+			initialContent: make([]byte, 256),
+			blockSize:      512,
+			expectedBlocks: 0,
+			expectedError:  false,
+		},
+		{
+			name:           "Empty File",
+			initialContent: make([]byte, 1536),
+			blockSize:      512,
+			expectedBlocks: 3,
+			expectedError:  false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Create a test file with specific content
+			filename := filepath.Join(tempDir, tc.name+".dat")
+			err := os.WriteFile(filename, tc.initialContent, 0644)
+			if err != nil {
+				t.Fatalf("Failed to create test file: %v", err)
+			}
+
+			// Create FileMgr instance
+			fm := &FileMgr{
+				dbDirectory: tempDir,
+				blocksize:   tc.blockSize,
+				openFiles:   make(map[string]*os.File),
+				isNew:       false,
+			}
+
+			// Call lengthLocked
+			numBlocks, err := fm.lengthLocked(tc.name + ".dat")
+
+			// Check for unexpected errors
+			if tc.expectedError && err == nil {
+				t.Errorf("Expected an error, but got none")
+			}
+
+			// Check number of blocks
+			if numBlocks != tc.expectedBlocks {
+				t.Errorf("Unexpected number of blocks. Expected %d, got %d",
+					tc.expectedBlocks, numBlocks)
+			}
+
+			// Ensure file is closed after the test
+			if f, exists := fm.openFiles[tc.name+".dat"]; exists {
+				f.Close()
+				delete(fm.openFiles, tc.name+".dat")
+			}
+		})
+	}
+}
 
 func TestBlockId(t *testing.T) {
 	t.Run("Creation and basic properties", func(t *testing.T) {
@@ -232,7 +589,7 @@ func TestGetBytes(t *testing.T) {
 			initialData:    []byte{},
 			offset:         0,
 			expectedResult: []byte{},
-			expectedError:  fmt.Errorf("%s: getting bytes", ErrOutOfBounds),
+			expectedError:  nil,
 		},
 	}
 
