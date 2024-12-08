@@ -1,3 +1,5 @@
+Here is the updated README with the accurate directory structure:
+
 # AwesomeDB
 
 This repository implements a lightweight database system in Go.
@@ -29,23 +31,18 @@ This repository implements a lightweight database system in Go.
    go test ./...
    ```
 
----
-
 ## Directory Structure
 ```plaintext
 .
-├── file/                   # File management components (FileManager, BlockId)
-├── page/                   # Page management components (Page, PageManager)
-├── allocator/              # Page allocator implementation
-├── buffer/                 # Page buffer implementation
-├── record/                 # RecordPage and related utilities
-├── benchmarks/             # Performance benchmarks
-├── tests/                  # Test cases for all components
-├── main.go                 # Entry point for the application
-└── README.md               # This file
+├── kfile/                 # File management components
+├── log/                   # Logging components
+├── mydb/                  # Database files
+├── utils/                 # Utility functions
+├── .gitignore             # Git ignore file
+├── README.md              # Project README file
+├── go.mod                 # Go module file
+└── main.go                # Entry point for the application
 ```
-
----
 
 ## Contributing
 Contributions are welcome! Please follow these steps:
@@ -55,14 +52,11 @@ Contributions are welcome! Please follow these steps:
 4. Push to the branch: `git push origin feature-name`.
 5. Open a pull request.
 
----
-
 ## License
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
-
----
 
 ## Acknowledgments
 - **Edward Sciore** for *Database Design and Implementation*, which inspired this project.
 - The open-source Go community for guidance and tools.
-```
+
+You can now update the README file in your repository with this content.
