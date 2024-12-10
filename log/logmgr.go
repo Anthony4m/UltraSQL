@@ -19,7 +19,7 @@ type LogMgr struct {
 	logsize        int
 }
 
-func newLogMgr(fm *kfile.FileMgr, logFile string) (*LogMgr, error) {
+func NewLogMgr(fm *kfile.FileMgr, logFile string) (*LogMgr, error) {
 	logMgr := &LogMgr{
 		fm:      fm,
 		logFile: logFile,
@@ -41,7 +41,7 @@ func newLogMgr(fm *kfile.FileMgr, logFile string) (*LogMgr, error) {
 	return logMgr, nil
 }
 
-func (lm *LogMgr) flushLsn(lsn int) {
+func (lm *LogMgr) FlushLsn(lsn int) {
 	if lsn >= lm.latestLSN {
 		lm.Flush()
 	}
