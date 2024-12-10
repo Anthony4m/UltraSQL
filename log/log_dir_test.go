@@ -26,7 +26,7 @@ func TestNewLogMgr(t *testing.T) {
 	}()
 
 	filename := "new_log.db"
-	logMgr, err := newLogMgr(fm, filename)
+	logMgr, err := NewLogMgr(fm, filename)
 	if err != nil {
 		t.Fatalf("Failed to create LogMgr for new log file: %v", err)
 	}
@@ -38,7 +38,7 @@ func TestNewLogMgr(t *testing.T) {
 	logMgr.Append([]byte("test record"))
 	logMgr.Flush()
 
-	logMgr2, err := newLogMgr(fm, filename)
+	logMgr2, err := NewLogMgr(fm, filename)
 	if err != nil {
 		t.Fatalf("Failed to create LogMgr for existing log file: %v", err)
 	}
@@ -60,7 +60,7 @@ func TestAppend(t *testing.T) {
 		os.RemoveAll(tempDir)
 	}()
 
-	logMgr, err := newLogMgr(fm, "append_test.db")
+	logMgr, err := NewLogMgr(fm, "append_test.db")
 	if err != nil {
 		t.Fatalf("Failed to initialize LogMgr: %v", err)
 	}
@@ -94,7 +94,7 @@ func TestFlush(t *testing.T) {
 		os.RemoveAll(tempDir)
 	}()
 
-	logMgr, err := newLogMgr(fm, "flush_test.db")
+	logMgr, err := NewLogMgr(fm, "flush_test.db")
 	if err != nil {
 		t.Fatalf("Failed to initialize LogMgr: %v", err)
 	}
@@ -140,7 +140,7 @@ func TestAppendBoundary(t *testing.T) {
 		os.RemoveAll(tempDir)
 	}()
 
-	logMgr, err := newLogMgr(fm, "boundary_test.db")
+	logMgr, err := NewLogMgr(fm, "boundary_test.db")
 	if err != nil {
 		t.Fatalf("Failed to initialize LogMgr: %v", err)
 	}
@@ -178,14 +178,14 @@ func TestLogMgr(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to append block: %v", err)
 	}
-	lm, _ := newLogMgr(fm, filename)
+	lm, _ := NewLogMgr(fm, filename)
 
 	createRecords(t, lm, 1, 3)
 	printLogRecords(t, lm, "The log file now has these records:")
 
 	// Create and append additional records
 	createRecords(t, lm, 4, 7)
-	err = lm.Flush()
+	lm.FlushLsn(5)
 	if err != nil {
 		return
 	}
