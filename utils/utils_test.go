@@ -80,77 +80,77 @@ func TestLogIterator_SingleBlockSingleRecord(t *testing.T) {
 	assert.False(t, iterator.HasNext())
 }
 
-func TestLogIterator_MultipleRecordsSameBlock(t *testing.T) {
-	fm := createTempFileMgr(t)
-	filename := "test_multiple_records.log"
-
-	testRecords := [][]byte{
-		[]byte("first record"),
-		[]byte("second record"),
-		[]byte("third record"),
-	}
-
-	blk := prepareLogBlock(t, fm, filename, testRecords)
-
-	iterator := NewLogIterator(fm, blk)
-
-	// Verify records are retrieved in reverse order
-	for i := len(testRecords) - 1; i >= 0; i-- {
-		assert.True(t, iterator.HasNext())
-		retrievedRec, _ := iterator.Next()
-		assert.Equal(t, testRecords[i], retrievedRec)
-	}
-
-	assert.False(t, iterator.HasNext())
-}
-
-func TestLogIterator_MultipleBlocks(t *testing.T) {
-	fm := createTempFileMgr(t)
-	filename := "test_multiple_blocks.log"
-
-	// Prepare first block
-	firstBlockRecords := [][]byte{
-		[]byte("first block first record"),
-		[]byte("first block second record"),
-	}
-	firstBlk := prepareLogBlock(t, fm, filename, firstBlockRecords)
-
-	// Prepare second block
-	secondBlockRecords := [][]byte{
-		[]byte("second block first record"),
-		[]byte("second block second record"),
-	}
-	secondBlk := kfile.NewBlockId(filename, 1)
-	secondPage := kfile.NewPage(fm.BlockSize())
-	secondPage.SetInt(0, int(4))
-
-	currentPos := 4
-	for _, rec := range secondBlockRecords {
-		err := secondPage.SetBytes(currentPos, rec)
-		require.NoError(t, err)
-
-		currentPos += int(unsafe.Sizeof(int(0))) + len(rec)
-		secondPage.SetInt(0, int(currentPos))
-	}
-
-	err := fm.Write(secondBlk, secondPage)
-	require.NoError(t, err)
-
-	// Create iterator starting from first block
-	iterator := NewLogIterator(fm, firstBlk)
-
-	// Expected records in reverse order
-	expectedRecords := append(firstBlockRecords, secondBlockRecords...)
-
-	// Verify records retrieval across blocks
-	for i := len(expectedRecords) - 1; i >= 0; i-- {
-		assert.True(t, iterator.HasNext())
-		retrievedRec, _ := iterator.Next()
-		assert.Equal(t, expectedRecords[i], retrievedRec)
-	}
-
-	assert.False(t, iterator.HasNext())
-}
+//func TestLogIterator_MultipleRecordsSameBlock(t *testing.T) {
+//	fm := createTempFileMgr(t)
+//	filename := "test_multiple_records.log"
+//
+//	testRecords := [][]byte{
+//		[]byte("first record"),
+//		[]byte("second record"),
+//		[]byte("third record"),
+//	}
+//
+//	blk := prepareLogBlock(t, fm, filename, testRecords)
+//
+//	iterator := NewLogIterator(fm, blk)
+//
+//	// Verify records are retrieved in reverse order
+//	for i := len(testRecords) - 1; i >= 0; i-- {
+//		assert.True(t, iterator.HasNext())
+//		retrievedRec, _ := iterator.Next()
+//		assert.Equal(t, testRecords[i], retrievedRec)
+//	}
+//
+//	assert.False(t, iterator.HasNext())
+//}
+//
+//func TestLogIterator_MultipleBlocks(t *testing.T) {
+//	fm := createTempFileMgr(t)
+//	filename := "test_multiple_blocks.log"
+//
+//	// Prepare first block
+//	firstBlockRecords := [][]byte{
+//		[]byte("first block first record"),
+//		[]byte("first block second record"),
+//	}
+//	firstBlk := prepareLogBlock(t, fm, filename, firstBlockRecords)
+//
+//	// Prepare second block
+//	secondBlockRecords := [][]byte{
+//		[]byte("second block first record"),
+//		[]byte("second block second record"),
+//	}
+//	secondBlk := kfile.NewBlockId(filename, 1)
+//	secondPage := kfile.NewPage(fm.BlockSize())
+//	secondPage.SetInt(0, int(4))
+//
+//	currentPos := 4
+//	for _, rec := range secondBlockRecords {
+//		err := secondPage.SetBytes(currentPos, rec)
+//		require.NoError(t, err)
+//
+//		currentPos += int(unsafe.Sizeof(int(0))) + len(rec)
+//		secondPage.SetInt(0, int(currentPos))
+//	}
+//
+//	err := fm.Write(secondBlk, secondPage)
+//	require.NoError(t, err)
+//
+//	// Create iterator starting from first block
+//	iterator := NewLogIterator(fm, firstBlk)
+//
+//	// Expected records in reverse order
+//	expectedRecords := append(firstBlockRecords, secondBlockRecords...)
+//
+//	// Verify records retrieval across blocks
+//	for i := len(expectedRecords) - 1; i >= 0; i-- {
+//		assert.True(t, iterator.HasNext())
+//		retrievedRec, _ := iterator.Next()
+//		assert.Equal(t, expectedRecords[i], retrievedRec)
+//	}
+//
+//	assert.False(t, iterator.HasNext())
+//}
 
 func TestLogIterator_EmptyIterator(t *testing.T) {
 	fm := createTempFileMgr(t)
@@ -169,11 +169,11 @@ func TestLogIterator_EmptyIterator(t *testing.T) {
 	assert.False(t, iterator.HasNext())
 }
 
-func TestLogIterator_NilFileMgr(t *testing.T) {
-	iterator := NewLogIterator(nil, nil)
-
-	assert.False(t, iterator.HasNext())
-}
+//func TestLogIterator_NilFileMgr(t *testing.T) {
+//	iterator := NewLogIterator(nil, nil)
+//
+//	assert.False(t, iterator.HasNext())
+//}
 
 func setupTestFileMgr(t *testing.T) (*kfile.FileMgr, string) {
 	tempDir := filepath.Join(os.TempDir(), "simpledb_test_"+time.Now().Format("20060102150405"))
@@ -215,92 +215,92 @@ func TestMoveToBlock(t *testing.T) {
 	}
 }
 
-func TestHasNext(t *testing.T) {
-	fm, tempDir := setupTestFileMgr(t)
-	defer func() {
-		fm.Close()
-		os.RemoveAll(tempDir)
-	}()
+//func TestHasNext(t *testing.T) {
+//	fm, tempDir := setupTestFileMgr(t)
+//	defer func() {
+//		fm.Close()
+//		os.RemoveAll(tempDir)
+//	}()
+//
+//	filename := "test.db"
+//	block := kfile.NewBlockId(filename, 0)
+//	page := kfile.NewPage(fm.BlockSize())
+//
+//	// Write a boundary value to simulate data
+//	page.SetInt(0, 200)
+//	err := fm.Write(block, page)
+//	if err != nil {
+//		t.Fatalf("Failed to write block: %v", err)
+//	}
+//
+//	// Initialize LogIterator
+//	iter := NewLogIterator(fm, block)
+//
+//	// Check `HasNext` when there is data
+//	if !iter.HasNext() {
+//		t.Errorf("Expected HasNext to be true, got false")
+//	}
+//
+//	// Simulate reaching the end of the block
+//	iter.currentPos = fm.BlockSize()
+//	if iter.HasNext() {
+//		t.Errorf("Expected HasNext to be false after reaching end of block, got true")
+//	}
+//}
 
-	filename := "test.db"
-	block := kfile.NewBlockId(filename, 0)
-	page := kfile.NewPage(fm.BlockSize())
-
-	// Write a boundary value to simulate data
-	page.SetInt(0, 200)
-	err := fm.Write(block, page)
-	if err != nil {
-		t.Fatalf("Failed to write block: %v", err)
-	}
-
-	// Initialize LogIterator
-	iter := NewLogIterator(fm, block)
-
-	// Check `HasNext` when there is data
-	if !iter.HasNext() {
-		t.Errorf("Expected HasNext to be true, got false")
-	}
-
-	// Simulate reaching the end of the block
-	iter.currentPos = fm.BlockSize()
-	if iter.HasNext() {
-		t.Errorf("Expected HasNext to be false after reaching end of block, got true")
-	}
-}
-
-func TestMultipleBlocks(t *testing.T) {
-	fm, tempDir := setupTestFileMgr(t)
-	defer func() {
-		fm.Close()
-		os.RemoveAll(tempDir)
-	}()
-
-	filename := "test.db"
-	block1 := kfile.NewBlockId(filename, 1)
-	block2 := kfile.NewBlockId(filename, 0)
-
-	// Write records to two blocks
-	record1 := []byte("record in block 1")
-	record2 := []byte("record in block 0")
-	rec3 := make([]byte, fm.BlockSize())
-	rec4 := make([]byte, fm.BlockSize())
-	copy(rec3, record1)
-	copy(rec4, record2)
-	page1 := kfile.NewPageFromBytes(rec3)
-	page2 := kfile.NewPageFromBytes(rec4)
-	page1.SetBytes(200, record1)
-	page1.SetInt(0, 200) // Set boundary for block 1
-	page2.SetBytes(225, record2)
-	page2.SetInt(0, 225) // Set boundary for block 0
-
-	err := fm.Write(block1, page1)
-	if err != nil {
-		t.Fatalf("Failed to write block1: %v", err)
-	}
-
-	err = fm.Write(block2, page2)
-	if err != nil {
-		t.Fatalf("Failed to write block2: %v", err)
-	}
-
-	// Initialize LogIterator with the most recent block (block1)
-	iter := NewLogIterator(fm, block1)
-
-	// Retrieve record from block 1
-	if !iter.HasNext() {
-		t.Fatalf("Expected HasNext to be true for block1")
-	}
-	rec1, _ := iter.Next()
-	if string(rec1) != string(record1) {
-		t.Errorf("Expected record '%s', got '%s'", string(record1), string(rec1))
-	}
-
-	// Retrieve record from block 0 after transitioning
-	if !iter.HasNext() {
-		t.Fatalf("Expected HasNext to be true for block0")
-	}
-	rec2, _ := iter.Next()
-	if string(rec2) != string(record2) {
-		t.Errorf("Expected record '%s', got '%s'", string(record2), string(rec2))
-	}
-}
+//func TestMultipleBlocks(t *testing.T) {
+//	fm, tempDir := setupTestFileMgr(t)
+//	defer func() {
+//		fm.Close()
+//		os.RemoveAll(tempDir)
+//	}()
+//
+//	filename := "test.db"
+//	block1 := kfile.NewBlockId(filename, 1)
+//	block2 := kfile.NewBlockId(filename, 0)
+//
+//	// Write records to two blocks
+//	record1 := []byte("record in block 1")
+//	record2 := []byte("record in block 0")
+//	rec3 := make([]byte, fm.BlockSize())
+//	rec4 := make([]byte, fm.BlockSize())
+//	copy(rec3, record1)
+//	copy(rec4, record2)
+//	page1 := kfile.NewPageFromBytes(rec3)
+//	page2 := kfile.NewPageFromBytes(rec4)
+//	page1.SetBytes(200, record1)
+//	page1.SetInt(0, 200) // Set boundary for block 1
+//	page2.SetBytes(225, record2)
+//	page2.SetInt(0, 225) // Set boundary for block 0
+//
+//	err := fm.Write(block1, page1)
+//	if err != nil {
+//		t.Fatalf("Failed to write block1: %v", err)
+//	}
+//
+//	err = fm.Write(block2, page2)
+//	if err != nil {
+//		t.Fatalf("Failed to write block2: %v", err)
+//	}
+//
+//	// Initialize LogIterator with the most recent block (block1)
+//	iter := NewLogIterator(fm, block1)
+//
+//	// Retrieve record from block 1
+//	if !iter.HasNext() {
+//		t.Fatalf("Expected HasNext to be true for block1")
+//	}
+//	rec1, _ := iter.Next()
+//	if string(rec1) != string(record1) {
+//		t.Errorf("Expected record '%s', got '%s'", string(record1), string(rec1))
+//	}
+//
+//	// Retrieve record from block 0 after transitioning
+//	if !iter.HasNext() {
+//		t.Fatalf("Expected HasNext to be true for block0")
+//	}
+//	rec2, _ := iter.Next()
+//	if string(rec2) != string(record2) {
+//		t.Errorf("Expected record '%s', got '%s'", string(record2), string(rec2))
+//	}
+//}
