@@ -1,5 +1,3 @@
-Here is the updated README with the accurate directory structure:
-
 # AwesomeDB
 
 This repository implements a lightweight database system in Go.
@@ -56,5 +54,3 @@ Contributions are welcome! Please follow these steps:
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
 
 ## Acknowledgments
-- **Edward Sciore** for *Database Design and Implementation*, which inspired this project.
-- The open-source Go community for guidance and tools.
