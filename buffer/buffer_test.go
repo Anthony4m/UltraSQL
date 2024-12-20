@@ -225,3 +225,177 @@ func TestFlushAll(t *testing.T) {
 
 	// Verify no crash and potential mock flush calls
 }
+
+// DeterministicBufferSimulator wraps BufferMgr to provide controlled testing
+type DeterministicBufferSimulator struct {
+	bufferMgr *BufferMgr
+	testLog   []string
+	mu        sync.Mutex
+}
+
+// NewDeterministicBufferSimulator creates a simulator for testing
+func NewDeterministicBufferSimulator(fm *kfile.FileMgr, lm *log.LogMgr, numbuffs int) *DeterministicBufferSimulator {
+	return &DeterministicBufferSimulator{
+		bufferMgr: NewBufferMgr(fm, lm, numbuffs),
+		testLog:   make([]string, 0),
+	}
+}
+
+// logEvent adds a thread-safe event to the test log
+func (ds *DeterministicBufferSimulator) logEvent(event string) {
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
+	ds.testLog = append(ds.testLog, event)
+}
+
+// Scenario: Basic Buffer Allocation and Deallocation
+func TestDeterministicBufferAllocation(t *testing.T) {
+	// Mock dependencies (these would typically be created with proper mocks)
+	fm := &kfile.FileMgr{} // Mock file manager
+	lm := &log.LogMgr{}    // Mock log manager
+
+	// Create a simulator with a fixed number of buffers
+	simulator := NewDeterministicBufferSimulator(fm, lm, 5)
+	bufferMgr := simulator.bufferMgr
+
+	// Test initial availability
+	initialAvailable := bufferMgr.available()
+	if initialAvailable != 5 {
+		t.Fatalf("Expected 5 initial available buffers, got %d", initialAvailable)
+	}
+
+	// Simulate pinning and unpinning
+	testBlocks := []*kfile.BlockId{
+		{}, {}, {},
+	}
+
+	// Pin multiple blocks
+	pinnedBuffers := make([]*Buffer, len(testBlocks))
+	for i, blk := range testBlocks {
+		buff, err := bufferMgr.pin(blk)
+		if err != nil {
+			t.Fatalf("Failed to pin block %d: %v", i, err)
+		}
+		pinnedBuffers[i] = buff
+	}
+
+	// Check availability decreased
+	currentAvailable := bufferMgr.available()
+	if currentAvailable != 2 {
+		t.Fatalf("Expected 2 available buffers after pinning, got %d", currentAvailable)
+	}
+
+	// Unpin buffers
+	for _, buff := range pinnedBuffers {
+		bufferMgr.unpin(buff)
+	}
+
+	// Verify availability is back to initial state
+	finalAvailable := bufferMgr.available()
+	if finalAvailable != 5 {
+		t.Fatalf("Expected 5 available buffers after unpinning, got %d", finalAvailable)
+	}
+}
+
+// Scenario: Concurrent Buffer Access Simulation
+func TestDeterministicConcurrentBufferAccess(t *testing.T) {
+	fm := &kfile.FileMgr{} // Mock file manager
+	lm := &log.LogMgr{}    // Mock log manager
+
+	// Create a simulator with a limited number of buffers
+	simulator := NewDeterministicBufferSimulator(fm, lm, 3)
+	bufferMgr := simulator.bufferMgr
+
+	// Concurrent pinning and unpinning simulation
+	var wg sync.WaitGroup
+	concurrentPins := 10
+
+	for i := 0; i < concurrentPins; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+
+			// Create a unique block for each goroutine
+			blk := &kfile.BlockId{}
+
+			// Attempt to pin
+			buff, err := bufferMgr.pin(blk)
+			if err != nil {
+				simulator.logEvent(fmt.Sprintf("Pin failed for goroutine %d", id))
+				return
+			}
+
+			// Simulate some work
+			time.Sleep(10 * time.Millisecond)
+
+			// Unpin
+			bufferMgr.unpin(buff)
+			simulator.logEvent(fmt.Sprintf("Goroutine %d completed pin/unpin", id))
+		}(i)
+	}
+
+	// Wait for all goroutines to complete
+	wg.Wait()
+
+	// Verify final buffer availability
+	finalAvailable := bufferMgr.available()
+	if finalAvailable != 3 {
+		t.Fatalf("Expected 3 available buffers at end, got %d", finalAvailable)
+	}
+}
+
+// Scenario: Buffer Overflow Handling
+func TestDeterministicBufferOverflow(t *testing.T) {
+	fm := &kfile.FileMgr{} // Mock file manager
+	lm := &log.LogMgr{}    // Mock log manager
+
+	// Create a simulator with very limited buffers
+	bufferCount := 2
+	bufferMgr := NewBufferMgr(fm, lm, bufferCount)
+
+	// Create more pin requests than available buffers
+	blocks := make([]*kfile.BlockId, bufferCount+2)
+	for i := range blocks {
+		blocks[i] = &kfile.BlockId{}
+	}
+
+	// First two pins should succeed
+	firstBuffers := make([]*Buffer, bufferCount)
+	for i := 0; i < bufferCount; i++ {
+		buff, err := bufferMgr.pin(blocks[i])
+		if err != nil {
+			t.Fatalf("Failed to pin block %d: %v", i, err)
+		}
+		firstBuffers[i] = buff
+	}
+
+	// Next pin should timeout or fail
+	_, err := bufferMgr.pin(blocks[bufferCount])
+	if err == nil {
+		t.Fatal("Expected an error when pinning beyond buffer limit")
+	}
+
+	// Unpin first buffers
+	for _, buff := range firstBuffers {
+		bufferMgr.unpin(buff)
+	}
+}
+
+// Benchmark Buffer Manager Performance
+func BenchmarkBufferManagerConcurrency(b *testing.B) {
+	fm := &kfile.FileMgr{} // Mock file manager
+	lm := &log.LogMgr{}    // Mock log manager
+
+	bufferMgr := NewBufferMgr(fm, lm, 10)
+
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		blk := &kfile.BlockId{}
+		for pb.Next() {
+			buff, err := bufferMgr.pin(blk)
+			if err == nil {
+				bufferMgr.unpin(buff)
+			}
+		}
+	})
+}
