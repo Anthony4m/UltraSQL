@@ -68,7 +68,7 @@ func TestAppend(t *testing.T) {
 	// Append records and check LSN
 	record := []byte("test record")
 	for i := 0; i < 10; i++ {
-		lsn := logMgr.Append(record)
+		lsn, _ := logMgr.Append(record)
 		if lsn != i+1 {
 			t.Errorf("Expected LSN %d, got %d", i+1, lsn)
 		}
@@ -185,7 +185,7 @@ func TestLogMgr(t *testing.T) {
 
 	// Create and append additional records
 	createRecords(t, lm, 4, 7)
-	lm.FlushLsn(5)
+	lm.FlushLSN(5)
 	if err != nil {
 		return
 	}
@@ -196,14 +196,14 @@ func createRecords(t *testing.T, lm *LogMgr, start, end int) {
 	t.Logf("Creating records:")
 	for i := start; i <= end; i++ {
 		record := createLogRecord(fmt.Sprintf("record%d", i), i+100)
-		lsn := lm.Append(record)
+		lsn, _ := lm.Append(record)
 		t.Logf("Record LSN: %d", lsn)
 	}
 }
 
 func printLogRecords(t *testing.T, lm *LogMgr, msg string) {
 	t.Log(msg)
-	iter := lm.Iterator()
+	iter, _ := lm.Iterator()
 	for iter.HasNext() {
 		rec, err := iter.Next()
 		if err != nil {
