@@ -8,6 +8,15 @@ import (
 	"unsafe"
 )
 
+type LogError struct {
+	Op  string
+	Err error
+}
+
+func (e *LogError) Error() string {
+	return fmt.Sprintf("log operation %s failed: %v", e.Op, e.Err)
+}
+
 type LogMgr struct {
 	fm             *kfile.FileMgr
 	mu             sync.RWMutex
@@ -20,109 +29,134 @@ type LogMgr struct {
 }
 
 func NewLogMgr(fm *kfile.FileMgr, logFile string) (*LogMgr, error) {
+	if fm == nil {
+		return nil, &LogError{Op: "new", Err: fmt.Errorf("file manager cannot be nil")}
+	}
 	logMgr := &LogMgr{
 		fm:      fm,
 		logFile: logFile,
 	}
 
-	logMgr.logsize, _ = fm.Length(logFile)
+	var err error
+	if logMgr.logsize, err = fm.Length(logFile); err != nil {
+		return nil, &LogError{Op: "new", Err: fmt.Errorf("failed to get log file length: %v", err)}
+	}
+
 	b := make([]byte, fm.BlockSize())
-	newPageBytes := kfile.NewPageFromBytes(b)
-	logMgr.logPage = newPageBytes
+	logMgr.logPage = kfile.NewPageFromBytes(b)
+
 	if logMgr.logsize == 0 {
-		logMgr.currentBlock = logMgr.appendNewBlock()
+		if logMgr.currentBlock = logMgr.appendNewBlock(); logMgr.currentBlock == nil {
+			return nil, &LogError{Op: "new", Err: fmt.Errorf("failed to append initial block")}
+		}
 	} else {
 		logMgr.currentBlock = kfile.NewBlockId(logFile, logMgr.logsize-1)
-		err := fm.Read(logMgr.currentBlock, logMgr.logPage)
-		if err != nil {
-			return nil, err
+		if err := fm.Read(logMgr.currentBlock, logMgr.logPage); err != nil {
+			return nil, &LogError{Op: "new", Err: fmt.Errorf("failed to read current block: %v", err)}
 		}
 	}
+
 	return logMgr, nil
 }
 
-func (lm *LogMgr) FlushLsn(lsn int) {
+func (lm *LogMgr) FlushLSN(lsn int) error {
 	if lsn >= lm.latestLSN {
-		lm.Flush()
+		return lm.Flush()
 	}
+	return nil
 }
 
-func (lm *LogMgr) FlushAsync() {
+func (lm *LogMgr) FlushAsync() <-chan error {
+	errChan := make(chan error, 1)
 	go func() {
-		if err := lm.Flush(); err != nil {
-			fmt.Printf("Async Flush failed: %v\n", err)
-		}
+		errChan <- lm.Flush()
+		close(errChan)
 	}()
+	return errChan
 }
 
-func (lm *LogMgr) Iterator() utils.Iterator[[]byte] {
-	err := lm.Flush()
-	if err != nil {
-		panic(err)
+func (lm *LogMgr) Iterator() (utils.Iterator[[]byte], error) {
+	if err := lm.Flush(); err != nil {
+		return nil, &LogError{Op: "iterator", Err: err}
 	}
-	lg := utils.NewLogIterator(lm.fm, lm.currentBlock)
-	return lg
+	return utils.NewLogIterator(lm.fm, lm.currentBlock), nil
 }
 
 func (lm *LogMgr) Flush() error {
-	err := lm.fm.Write(lm.currentBlock, lm.logPage)
-	if err != nil {
-		return fmt.Errorf("failed to Flush log block %s: %v", lm.currentBlock.FileName(), err)
+	if err := lm.fm.Write(lm.currentBlock, lm.logPage); err != nil {
+		return &LogError{Op: "flush", Err: fmt.Errorf("failed to write block %s: %v",
+			lm.currentBlock.FileName(), err)}
 	}
+	lm.latestSavedLSN = lm.latestLSN
 	return nil
 }
 
 func (lm *LogMgr) appendNewBlock() *kfile.BlockId {
 	newBlock, err := lm.fm.Append(lm.logFile)
 	if err != nil {
-		_ = fmt.Errorf("error occurred when appending block %s", err)
-	}
-	err = lm.logPage.SetInt(0, lm.fm.BlockSize())
-	if err != nil {
-		fmt.Printf("the error is %s", err)
 		return nil
 	}
-	err = lm.fm.Write(newBlock, lm.logPage)
-	if err != nil {
-		fmt.Printf("the second error is %s", err)
+
+	if err := lm.logPage.SetInt(0, lm.fm.BlockSize()); err != nil {
 		return nil
 	}
+
+	if err := lm.fm.Write(newBlock, lm.logPage); err != nil {
+		return nil
+	}
+
 	return newBlock
 }
 
-func (lm *LogMgr) Append(logrec []byte) int {
+func (lm *LogMgr) Append(logrec []byte) (int, error) {
+	if len(logrec) == 0 {
+		return 0, &LogError{Op: "append", Err: fmt.Errorf("empty log record")}
+	}
+
 	lm.mu.Lock()
 	defer lm.mu.Unlock()
 
-	boundary, _ := lm.logPage.GetInt(0)
+	boundary, err := lm.logPage.GetInt(0)
+	if err != nil {
+		return 0, &LogError{Op: "append", Err: fmt.Errorf("failed to get boundary: %v", err)}
+	}
+
 	recsize := len(logrec)
 	intBytes := int(unsafe.Sizeof(0))
 	bytesNeeded := recsize + intBytes
 
 	if (boundary - bytesNeeded) < intBytes {
-		lm.Flush()
-		lm.currentBlock = lm.appendNewBlock()
+		if err := lm.Flush(); err != nil {
+			return 0, &LogError{Op: "append", Err: fmt.Errorf("failed to flush: %v", err)}
+		}
+
+		if lm.currentBlock = lm.appendNewBlock(); lm.currentBlock == nil {
+			return 0, &LogError{Op: "append", Err: fmt.Errorf("failed to append new block")}
+		}
+
 		boundary, _ = lm.logPage.GetInt(0)
 	}
 
 	recpos := boundary - bytesNeeded
-	err := lm.logPage.SetBytes(recpos, logrec)
-	if err != nil {
-		_ = fmt.Errorf("error while settng byte %s", err)
-		return 0
+	if err := lm.logPage.SetBytes(recpos, logrec); err != nil {
+		return 0, &LogError{Op: "append", Err: fmt.Errorf("failed to set bytes: %v", err)}
 	}
-	lm.logPage.SetInt(0, recpos)
-	lm.latestLSN += 1
-	return lm.latestLSN
+
+	if err := lm.logPage.SetInt(0, recpos); err != nil {
+		return 0, &LogError{Op: "append", Err: fmt.Errorf("failed to update boundary: %v", err)}
+	}
+
+	lm.latestLSN++
+	return lm.latestLSN, nil
 }
 
 func (lm *LogMgr) Checkpoint() error {
 	lm.mu.Lock()
 	defer lm.mu.Unlock()
-	err := lm.Flush()
-	if err != nil {
-		return fmt.Errorf("failed to create checkpoint: %v", err)
+
+	if err := lm.Flush(); err != nil {
+		return &LogError{Op: "checkpoint", Err: err}
 	}
-	fmt.Println("Checkpoint created.")
+
 	return nil
 }
