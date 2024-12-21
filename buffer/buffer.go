@@ -65,7 +65,10 @@ func (b *Buffer) assignToBlock(block *kfile.BlockId) error {
 
 func (b *Buffer) flush() error {
 	if b.txnum > 0 && b.blk != nil {
-		b.lm.FlushLsn(b.lsn)
+		err := b.lm.FlushLSN(b.lsn)
+		if err != nil {
+			return err
+		}
 		if err := b.fm.Write(b.blk, b.contents); err != nil {
 			return err
 		}
