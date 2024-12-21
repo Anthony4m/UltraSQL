@@ -250,10 +250,18 @@ func (ds *DeterministicBufferSimulator) logEvent(event string) {
 
 // Scenario: Basic Buffer Allocation and Deallocation
 func TestDeterministicBufferAllocation(t *testing.T) {
-	// Mock dependencies (these would typically be created with proper mocks)
-	fm := &kfile.FileMgr{} // Mock file manager
-	lm := &log.LogMgr{}    // Mock log manager
+	tempDir := filepath.Join(os.TempDir(), "simpledb_test_"+time.Now().Format("20060102150405"))
+	blockSize := 400
+	fm, err := kfile.NewFileMgr(tempDir, blockSize)
+	if err != nil {
+		t.Fatalf("Failed to create FileMgr: %v", err)
+	}
+	defer func() {
+		fm.Close()
+		os.RemoveAll(tempDir)
+	}()
 
+	lm, _ := log.NewLogMgr(fm, "logfile.db")
 	// Create a simulator with a fixed number of buffers
 	simulator := NewDeterministicBufferSimulator(fm, lm, 5)
 	bufferMgr := simulator.bufferMgr
@@ -263,10 +271,9 @@ func TestDeterministicBufferAllocation(t *testing.T) {
 	if initialAvailable != 5 {
 		t.Fatalf("Expected 5 initial available buffers, got %d", initialAvailable)
 	}
-
 	// Simulate pinning and unpinning
 	testBlocks := []*kfile.BlockId{
-		{}, {}, {},
+		{Filename: "file1", Blknum: 1}, {Filename: "file1", Blknum: 2}, {Filename: "file1", Blknum: 3},
 	}
 
 	// Pin multiple blocks
@@ -299,9 +306,18 @@ func TestDeterministicBufferAllocation(t *testing.T) {
 
 // Scenario: Concurrent Buffer Access Simulation
 func TestDeterministicConcurrentBufferAccess(t *testing.T) {
-	fm := &kfile.FileMgr{} // Mock file manager
-	lm := &log.LogMgr{}    // Mock log manager
+	tempDir := filepath.Join(os.TempDir(), "simpledb_test_"+time.Now().Format("20060102150405"))
+	blockSize := 400
+	fm, err := kfile.NewFileMgr(tempDir, blockSize)
+	if err != nil {
+		t.Fatalf("Failed to create FileMgr: %v", err)
+	}
+	defer func() {
+		fm.Close()
+		os.RemoveAll(tempDir)
+	}()
 
+	lm, _ := log.NewLogMgr(fm, "logfile.db")
 	// Create a simulator with a limited number of buffers
 	simulator := NewDeterministicBufferSimulator(fm, lm, 3)
 	bufferMgr := simulator.bufferMgr
@@ -316,7 +332,7 @@ func TestDeterministicConcurrentBufferAccess(t *testing.T) {
 			defer wg.Done()
 
 			// Create a unique block for each goroutine
-			blk := &kfile.BlockId{}
+			blk := &kfile.BlockId{Filename: "file1", Blknum: 1}
 
 			// Attempt to pin
 			buff, err := bufferMgr.pin(blk)
@@ -346,17 +362,30 @@ func TestDeterministicConcurrentBufferAccess(t *testing.T) {
 
 // Scenario: Buffer Overflow Handling
 func TestDeterministicBufferOverflow(t *testing.T) {
-	fm := &kfile.FileMgr{} // Mock file manager
-	lm := &log.LogMgr{}    // Mock log manager
+	tempDir := filepath.Join(os.TempDir(), "simpledb_test_"+time.Now().Format("20060102150405"))
+	blockSize := 400
+	fm, err := kfile.NewFileMgr(tempDir, blockSize)
+	if err != nil {
+		t.Fatalf("Failed to create FileMgr: %v", err)
+	}
+	defer func() {
+		fm.Close()
+		os.RemoveAll(tempDir)
+	}()
+
+	lm, _ := log.NewLogMgr(fm, "logfile.db")
 
 	// Create a simulator with very limited buffers
 	bufferCount := 2
 	bufferMgr := NewBufferMgr(fm, lm, bufferCount)
 
 	// Create more pin requests than available buffers
-	blocks := make([]*kfile.BlockId, bufferCount+2)
+	blocks := make([]*kfile.BlockId, bufferCount+6)
 	for i := range blocks {
-		blocks[i] = &kfile.BlockId{}
+		blocks[i] = &kfile.BlockId{
+			Filename: "file2",
+			Blknum:   i,
+		}
 	}
 
 	// First two pins should succeed
@@ -370,7 +399,7 @@ func TestDeterministicBufferOverflow(t *testing.T) {
 	}
 
 	// Next pin should timeout or fail
-	_, err := bufferMgr.pin(blocks[bufferCount])
+	_, err = bufferMgr.pin(blocks[bufferCount])
 	if err == nil {
 		t.Fatal("Expected an error when pinning beyond buffer limit")
 	}
@@ -383,14 +412,24 @@ func TestDeterministicBufferOverflow(t *testing.T) {
 
 // Benchmark Buffer Manager Performance
 func BenchmarkBufferManagerConcurrency(b *testing.B) {
-	fm := &kfile.FileMgr{} // Mock file manager
-	lm := &log.LogMgr{}    // Mock log manager
+	tempDir := filepath.Join(os.TempDir(), "simpledb_test_"+time.Now().Format("20060102150405"))
+	blockSize := 400
+	fm, err := kfile.NewFileMgr(tempDir, blockSize)
+	if err != nil {
+		b.Fatalf("Failed to create FileMgr: %v", err)
+	}
+	defer func() {
+		fm.Close()
+		os.RemoveAll(tempDir)
+	}()
+
+	lm, _ := log.NewLogMgr(fm, "logfile.db")
 
 	bufferMgr := NewBufferMgr(fm, lm, 10)
 
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
-		blk := &kfile.BlockId{}
+		blk := &kfile.BlockId{Filename: "file1", Blknum: 1}
 		for pb.Next() {
 			buff, err := bufferMgr.pin(blk)
 			if err == nil {

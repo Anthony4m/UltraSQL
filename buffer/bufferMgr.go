@@ -90,12 +90,13 @@ func (bM *BufferMgr) tryToPin(blk *kfile.BlockId) *Buffer {
 	if buff == nil {
 		buff = bM.chooseUnpinnedBuffer()
 		if buff == nil {
+			fmt.Printf("No unpinned buffers available. Total buffers: %d, Available: %d",
+				len(bM.bufferpool), bM.numAvailable)
 			return nil
 		}
 		err := buff.assignToBlock(blk)
 		if err != nil {
 			if !strings.Contains(err.Error(), "EOF") {
-				// Panic for errors that do not involve "EOF"
 				panic(err)
 			}
 		}
@@ -117,10 +118,23 @@ func (bM *BufferMgr) findExistingBuffer(blk *kfile.BlockId) *Buffer {
 }
 
 func (bM *BufferMgr) chooseUnpinnedBuffer() *Buffer {
+	// Log the current state of all buffers
+	pinnedCount := 0
 	for _, buff := range bM.bufferpool {
+		if buff.IsPinned() {
+			pinnedCount++
+		}
+	}
+	fmt.Printf("Looking for unpinned buffer. Total: %d, Pinned: %d, Available: %d",
+		len(bM.bufferpool), pinnedCount, bM.numAvailable)
+
+	for i, buff := range bM.bufferpool {
 		if !buff.IsPinned() {
+			fmt.Printf("Found unpinned buffer at index %d", i)
 			return buff
 		}
 	}
+
+	fmt.Printf("No unpinned buffers found!")
 	return nil
 }
