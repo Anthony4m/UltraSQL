@@ -1,14 +1,14 @@
 package buffer
 
 import (
-	"awesomeDB/kfile"
-	"awesomeDB/log"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
 	"testing"
 	"time"
+	"ultraSQL/kfile"
+	"ultraSQL/log"
 )
 
 func TestBuffer(t *testing.T) {

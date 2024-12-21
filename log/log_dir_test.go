@@ -1,14 +1,14 @@
 package log
 
 import (
-	"awesomeDB/kfile"
-	"awesomeDB/utils"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+	"ultraSQL/kfile"
+	"ultraSQL/utils"
 	"unsafe"
 )
 

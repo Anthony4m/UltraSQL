@@ -1,12 +1,12 @@
 package buffer
 
 import (
-	"awesomeDB/kfile"
-	"awesomeDB/log"
 	"fmt"
 	"strings"
 	"sync"
 	"time"
+	"ultraSQL/kfile"
+	"ultraSQL/log"
 )
 
 type BufferMgr struct {

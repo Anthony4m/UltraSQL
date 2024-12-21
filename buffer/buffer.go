@@ -1,9 +1,9 @@
 package buffer
 
 import (
-	"awesomeDB/kfile"
-	"awesomeDB/log"
 	"errors"
+	"ultraSQL/kfile"
+	"ultraSQL/log"
 )
 
 type Buffer struct {

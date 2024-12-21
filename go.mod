@@ -1,4 +1,4 @@
-module awesomeDB
+module ultraSQL
 
 go 1.23.1
 

@@ -19,8 +19,8 @@ UltraSQL is a minimalist database system built in Go, designed to be lightweight
 ### Installation
 1. Clone the repository:
    ```bash
-   git clone https://github.com/Anthony4m/awesomeDB.git
-   cd awesomeDB
+   git clone https://github.com/Anthony4m/ultraSQL.git
+   cd ultraSQL
    ```
 2. Install dependencies:
    ```bash
