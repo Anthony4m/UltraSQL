@@ -185,7 +185,10 @@ func TestLogMgr(t *testing.T) {
 
 	// Create and append additional records
 	createRecords(t, lm, 4, 7)
-	lm.FlushLSN(5)
+	err = lm.FlushLSN(5)
+	if err != nil {
+		return
+	}
 	if err != nil {
 		return
 	}
