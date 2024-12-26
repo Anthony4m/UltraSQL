@@ -22,9 +22,12 @@ type FileMgr struct {
 }
 
 type FileMetadata struct {
-	CreatedAt  time.Time
-	ModifiedAt time.Time
-	SizeLimit  int64
+	CreatedAt    time.Time
+	ModifiedAt   time.Time
+	SizeLimit    int64
+	FileSize     int64
+	BlockCount   int
+	LastAccessed time.Time
 }
 
 type ReadWriteLogEntry struct {
@@ -78,7 +81,10 @@ func NewFileMgr(dbDirectory string, blocksize int) (*FileMgr, error) {
 }
 
 func (fm *FileMgr) addMetaData(metaData FileMetadata) {
-	fm.metaData = FileMetadata{metaData.CreatedAt, metaData.ModifiedAt, metaData.SizeLimit}
+	fm.metaData = FileMetadata{metaData.CreatedAt,
+		metaData.ModifiedAt, metaData.SizeLimit,
+		metaData.FileSize, metaData.BlockCount,
+		metaData.LastAccessed}
 }
 
 func NewMetaData(created_at time.Time) FileMetadata {
@@ -386,8 +392,75 @@ func (fm *FileMgr) RenameFile(blk *BlockId, newFileName string) error {
 	blk.SetFileName(newFileName)
 	metadata := fm.metaData
 	metadata.ModifiedAt = time.Now()
+	metadata.LastAccessed = time.Now()
 	fm.addMetaData(metadata)
 	fm.openFiles[newFileName] = newFile
+
+	return nil
+}
+
+func (fm *FileMgr) DeleteFile(filename string) error {
+	fm.mutex.Lock()
+	defer fm.mutex.Unlock()
+
+	if f, exists := fm.openFiles[filename]; exists {
+		err := f.Close()
+		if err != nil {
+			return fmt.Errorf("failed to close file before deletion: %v", err)
+		}
+		delete(fm.openFiles, filename)
+	}
+
+	path := filepath.Join(fm.dbDirectory, filename)
+	err := os.Remove(path)
+	if err != nil {
+		return fmt.Errorf("failed to delete file %s: %v", filename, err)
+	}
+
+	return nil
+}
+
+func (fm *FileMgr) checkSizeLimit(filename string, additionalBytes int64) error {
+	if fm.metaData.SizeLimit <= 0 {
+		return nil
+	}
+
+	f, err := fm.getFile(filename)
+	if err != nil {
+		return err
+	}
+
+	stat, err := f.Stat()
+	if err != nil {
+		return err
+	}
+
+	if stat.Size()+additionalBytes > fm.metaData.SizeLimit {
+		return fmt.Errorf("operation would exceed size limit of %d bytes", fm.metaData.SizeLimit)
+	}
+
+	return nil
+}
+
+func (fm *FileMgr) ValidateFile(filename string) error {
+	f, err := fm.getFile(filename)
+	if err != nil {
+		return err
+	}
+
+	stat, err := f.Stat()
+	if err != nil {
+		return err
+	}
+
+	if stat.Size()%int64(fm.blocksize) != 0 {
+		return fmt.Errorf("file size %d is not a multiple of blocksize %d",
+			stat.Size(), fm.blocksize)
+	}
+
+	if stat.Mode().Perm()&0600 != 0600 {
+		return fmt.Errorf("insufficient file permissions")
+	}
 
 	return nil
 }
