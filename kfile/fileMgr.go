@@ -18,6 +18,13 @@ type FileMgr struct {
 	blocksWritten int
 	readLog       []ReadWriteLogEntry
 	writeLog      []ReadWriteLogEntry
+	metaData      FileMetadata
+}
+
+type FileMetadata struct {
+	CreatedAt  time.Time
+	ModifiedAt time.Time
+	SizeLimit  int64
 }
 
 type ReadWriteLogEntry struct {
@@ -65,8 +72,73 @@ func NewFileMgr(dbDirectory string, blocksize int) (*FileMgr, error) {
 			}
 		}
 	}
-
+	metadata := NewMetaData(time.Now())
+	fm.metaData = metadata
 	return fm, nil
+}
+
+func (fm *FileMgr) addMetaData(metaData FileMetadata) {
+	fm.metaData = FileMetadata{metaData.CreatedAt, metaData.ModifiedAt, metaData.SizeLimit}
+}
+
+func NewMetaData(created_at time.Time) FileMetadata {
+	return FileMetadata{
+		CreatedAt: created_at,
+	}
+}
+
+func (fm *FileMgr) PreallocateFile(blk *BlockId, size int64) error {
+	if size%int64(fm.blocksize) != 0 {
+		return fmt.Errorf("size must be multiple of blocksize %d", fm.blocksize)
+	}
+
+	filename := blk.GetFileName()
+	if filename == "" {
+		return fmt.Errorf("invalid filename")
+	}
+
+	dirStat, err := os.Stat(fm.dbDirectory)
+	if err != nil {
+		return fmt.Errorf("failed to stat directory: %v", err)
+	}
+	dirMode := dirStat.Mode()
+	isDirWritable := dirMode&0200 != 0
+	if !isDirWritable {
+		return fmt.Errorf("directory is not writable")
+	}
+
+	f, err := fm.getFile(filename)
+	if err != nil {
+		return fmt.Errorf("failed to get file for preallocation: %v", err)
+	}
+
+	stat, err := f.Stat()
+	if err != nil {
+		return fmt.Errorf("failed to stat file: %v", err)
+	}
+
+	mode := stat.Mode()
+	isWritable := mode&0200 != 0
+	if !isWritable {
+		return fmt.Errorf("file is not writable")
+	}
+
+	currentSize := stat.Size()
+	if currentSize >= size {
+		return nil
+	}
+
+	err = f.Truncate(size)
+	if err != nil {
+		return fmt.Errorf("failed to preallocate sparse file: %v", err)
+	}
+
+	err = f.Sync()
+	if err != nil {
+		return fmt.Errorf("failed to sync preallocated file: %v", err)
+	}
+
+	return nil
 }
 
 func (fm *FileMgr) getFile(filename string) (*os.File, error) {
@@ -86,7 +158,7 @@ func (fm *FileMgr) getFile(filename string) (*os.File, error) {
 func (fm *FileMgr) Read(blk *BlockId, p *Page) error {
 	fm.mutex.RLock()
 	defer fm.mutex.RUnlock()
-	f, err := fm.getFile(blk.FileName())
+	f, err := fm.getFile(blk.GetFileName())
 	if err != nil {
 		return fmt.Errorf("failed to get file for block %v: %v", blk, err)
 	}
@@ -95,7 +167,7 @@ func (fm *FileMgr) Read(blk *BlockId, p *Page) error {
 	_, err = f.Seek(offset, 0)
 	if err != nil {
 
-		return fmt.Errorf(format, offset, blk.FileName(), err)
+		return fmt.Errorf(format, offset, blk.GetFileName(), err)
 	}
 	bytesRead, err := f.Read(p.Contents())
 	if err != nil {
@@ -120,7 +192,7 @@ func (fm *FileMgr) Write(blk *BlockId, p *Page) error {
 	fm.mutex.Lock()
 	defer fm.mutex.Unlock()
 
-	f, err := fm.getFile(blk.FileName())
+	f, err := fm.getFile(blk.GetFileName())
 	if err != nil {
 		return fmt.Errorf("failed to get file for block %v: %v", blk, err)
 	}
@@ -128,7 +200,7 @@ func (fm *FileMgr) Write(blk *BlockId, p *Page) error {
 	offset := int64(blk.Number() * fm.blocksize)
 	_, err = f.Seek(offset, 0)
 	if err != nil {
-		return fmt.Errorf(format, offset, blk.FileName(), err)
+		return fmt.Errorf(format, offset, blk.GetFileName(), err)
 	}
 	bytesWritten, err := f.Write(p.Contents())
 	if err != nil {
@@ -141,7 +213,7 @@ func (fm *FileMgr) Write(blk *BlockId, p *Page) error {
 
 	err = f.Sync()
 	if err != nil {
-		return fmt.Errorf("failed to sync file %s: %v", blk.FileName(), err)
+		return fmt.Errorf("failed to sync file %s: %v", blk.GetFileName(), err)
 	}
 	fm.blocksWritten++
 	fm.addToWriteLog(ReadWriteLogEntry{
@@ -260,4 +332,62 @@ func (fm *FileMgr) ReadLog() []ReadWriteLogEntry {
 
 func (fm *FileMgr) WriteLog() []ReadWriteLogEntry {
 	return fm.writeLog
+}
+
+func (fm *FileMgr) ensureFileSize(blk *BlockId, requiredBlocks int) error {
+	currentBlocks, err := fm.Length(blk.GetFileName())
+	if err != nil {
+		return err
+	}
+
+	if currentBlocks < requiredBlocks {
+		size := int64(requiredBlocks * fm.blocksize)
+		return fm.PreallocateFile(blk, size)
+	}
+
+	return nil
+}
+
+func (fm *FileMgr) RenameFile(blk *BlockId, newFileName string) error {
+	fm.mutex.Lock()
+	defer fm.mutex.Unlock()
+
+	if newFileName == "" {
+		return fmt.Errorf("invalid new filename: %s", newFileName)
+	}
+
+	oldFileName := blk.GetFileName()
+
+	if f, exists := fm.openFiles[oldFileName]; exists {
+		err := f.Close()
+		if err != nil {
+			return fmt.Errorf("failed to close file before rename: %v", err)
+		}
+		delete(fm.openFiles, oldFileName)
+	}
+
+	oldPath := filepath.Join(fm.dbDirectory, oldFileName)
+	newPath := filepath.Join(fm.dbDirectory, newFileName)
+
+	if _, err := os.Stat(newPath); err == nil {
+		return fmt.Errorf("target file already exists: %s", newFileName)
+	}
+
+	err := os.Rename(oldPath, newPath)
+	if err != nil {
+		return fmt.Errorf("failed to rename file from %s to %s: %v",
+			oldFileName, newFileName, err)
+	}
+
+	newFile, err := os.OpenFile(newPath, os.O_RDWR, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to reopen renamed file: %v", err)
+	}
+	blk.SetFileName(newFileName)
+	metadata := fm.metaData
+	metadata.ModifiedAt = time.Now()
+	fm.addMetaData(metadata)
+	fm.openFiles[newFileName] = newFile
+
+	return nil
 }

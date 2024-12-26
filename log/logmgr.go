@@ -86,7 +86,7 @@ func (lm *LogMgr) Iterator() (utils.Iterator[[]byte], error) {
 func (lm *LogMgr) Flush() error {
 	if err := lm.fm.Write(lm.currentBlock, lm.logPage); err != nil {
 		return &Error{Op: "flush", Err: fmt.Errorf("failed to write block %s: %v",
-			lm.currentBlock.FileName(), err)}
+			lm.currentBlock.GetFileName(), err)}
 	}
 	lm.latestSavedLSN = lm.latestLSN
 	return nil

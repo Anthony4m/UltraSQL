@@ -28,7 +28,7 @@ func (it *LogIterator) HasNext() bool {
 
 func (it *LogIterator) Next() ([]byte, error) {
 	if it.currentPos == it.fm.BlockSize() {
-		it.blk = kfile.NewBlockId(it.blk.FileName(), it.blk.Number()-1)
+		it.blk = kfile.NewBlockId(it.blk.GetFileName(), it.blk.Number()-1)
 		it.moveToBlock(it.blk)
 	}
 	rec, err := it.p.GetBytesWithLen(it.currentPos)

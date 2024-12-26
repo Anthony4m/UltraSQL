@@ -134,16 +134,16 @@ func TestPinAndUnpin(t *testing.T) {
 	// Pin first block
 	buf1, _ := bufferMgr.pin(blk1)
 	if buf1 == nil {
-		t.Fatal("Failed to pin buffer for block 1")
+		t.Fatal("Failed to pin blk for block 1")
 	}
 	if bufferMgr.available() != 1 {
-		t.Errorf("Expected 1 available buffer, got %d", bufferMgr.available())
+		t.Errorf("Expected 1 available blk, got %d", bufferMgr.available())
 	}
 
 	// Pin second block
 	buf2, _ := bufferMgr.pin(blk2)
 	if buf2 == nil {
-		t.Fatal("Failed to pin buffer for block 2")
+		t.Fatal("Failed to pin blk for block 2")
 	}
 	if bufferMgr.available() != 0 {
 		t.Errorf("Expected 0 available buffers, got %d", bufferMgr.available())
@@ -152,7 +152,7 @@ func TestPinAndUnpin(t *testing.T) {
 	// Unpin first block
 	bufferMgr.unpin(buf1)
 	if bufferMgr.available() != 1 {
-		t.Errorf("Expected 1 available buffer after unpin, got %d", bufferMgr.available())
+		t.Errorf("Expected 1 available blk after unpin, got %d", bufferMgr.available())
 	}
 }
 
@@ -177,10 +177,10 @@ func TestPinAndUnpin(t *testing.T) {
 //	blk2, err := fm.Append("file2")
 //	blk3, err := fm.Append("file3")
 //
-//	// Pin the only available buffer
+//	// Pin the only available blk
 //	buf1, _ := bufferMgr.pin(blk1)
 //	if buf1 == nil {
-//		t.Fatal("Failed to pin buffer for block 1")
+//		t.Fatal("Failed to pin blk for block 1")
 //	}
 //
 //	// Attempt to pin another block, which should time out
@@ -189,7 +189,7 @@ func TestPinAndUnpin(t *testing.T) {
 //	buf3, _ := bufferMgr.pin(blk3)
 //	fmt.Println(buf2)
 //	if buf3 != nil {
-//		t.Error("Expected nil buffer due to timeout, but got a buffer")
+//		t.Error("Expected nil blk due to timeout, but got a blk")
 //	}
 //	if time.Since(start) < MAX_TIME {
 //		t.Errorf("Expected wait time to be at least %v, but got %v", MAX_TIME, time.Since(start))
@@ -215,10 +215,10 @@ func TestFlushAll(t *testing.T) {
 
 	blk1 := &kfile.BlockId{Filename: "file1", Blknum: 1}
 
-	// Pin and modify a buffer
+	// Pin and modify a blk
 	buf1, _ := bufferMgr.pin(blk1)
 	if buf1 == nil {
-		t.Fatal("Failed to pin buffer for block 1")
+		t.Fatal("Failed to pin blk for block 1")
 	}
 
 	bufferMgr.FlushAll(0) // Mock logic to flush based on txid
@@ -304,6 +304,35 @@ func TestDeterministicBufferAllocation(t *testing.T) {
 	}
 }
 
+// Benchmark Buffer Manager Performance
+func BenchmarkBufferManagerConcurrency(b *testing.B) {
+	tempDir := filepath.Join(os.TempDir(), "simpledb_test_"+time.Now().Format("20060102150405"))
+	blockSize := 400
+	fm, err := kfile.NewFileMgr(tempDir, blockSize)
+	if err != nil {
+		b.Fatalf("Failed to create FileMgr: %v", err)
+	}
+	defer func() {
+		fm.Close()
+		os.RemoveAll(tempDir)
+	}()
+
+	lm, _ := log.NewLogMgr(fm, "logfile.db")
+
+	bufferMgr := NewBufferMgr(fm, lm, 10)
+
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		blk := &kfile.BlockId{Filename: "file1", Blknum: 1}
+		for pb.Next() {
+			buff, err := bufferMgr.pin(blk)
+			if err == nil {
+				bufferMgr.unpin(buff)
+			}
+		}
+	})
+}
+
 // Scenario: Concurrent Buffer Access Simulation
 func TestDeterministicConcurrentBufferAccess(t *testing.T) {
 	tempDir := filepath.Join(os.TempDir(), "simpledb_test_"+time.Now().Format("20060102150405"))
@@ -353,7 +382,7 @@ func TestDeterministicConcurrentBufferAccess(t *testing.T) {
 	// Wait for all goroutines to complete
 	wg.Wait()
 
-	// Verify final buffer availability
+	// Verify final blk availability
 	finalAvailable := bufferMgr.available()
 	if finalAvailable != 3 {
 		t.Fatalf("Expected 3 available buffers at end, got %d", finalAvailable)
@@ -398,43 +427,10 @@ func TestDeterministicBufferOverflow(t *testing.T) {
 		firstBuffers[i] = buff
 	}
 
-	// Next pin should timeout or fail
-	_, err = bufferMgr.pin(blocks[bufferCount])
-	if err == nil {
-		t.Fatal("Expected an error when pinning beyond buffer limit")
+	_, pinErr := bufferMgr.pin(blocks[bufferCount])
+	if pinErr == nil {
+		t.Errorf("Expected an abortion got a block: %v", pinErr)
 	}
 
-	// Unpin first buffers
-	for _, buff := range firstBuffers {
-		bufferMgr.unpin(buff)
-	}
-}
-
-// Benchmark Buffer Manager Performance
-func BenchmarkBufferManagerConcurrency(b *testing.B) {
-	tempDir := filepath.Join(os.TempDir(), "simpledb_test_"+time.Now().Format("20060102150405"))
-	blockSize := 400
-	fm, err := kfile.NewFileMgr(tempDir, blockSize)
-	if err != nil {
-		b.Fatalf("Failed to create FileMgr: %v", err)
-	}
-	defer func() {
-		fm.Close()
-		os.RemoveAll(tempDir)
-	}()
-
-	lm, _ := log.NewLogMgr(fm, "logfile.db")
-
-	bufferMgr := NewBufferMgr(fm, lm, 10)
-
-	b.ResetTimer()
-	b.RunParallel(func(pb *testing.PB) {
-		blk := &kfile.BlockId{Filename: "file1", Blknum: 1}
-		for pb.Next() {
-			buff, err := bufferMgr.pin(blk)
-			if err == nil {
-				bufferMgr.unpin(buff)
-			}
-		}
-	})
+	bufferMgr.unpin(firstBuffers[0])
 }

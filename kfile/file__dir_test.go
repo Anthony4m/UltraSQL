@@ -45,8 +45,8 @@ func TestBlock(t *testing.T) {
 		Blknum := 5
 		blk := NewBlockId(Filename, Blknum)
 
-		if blk.FileName() != Filename {
-			t.Errorf("Expected Filename %s, got %s", Filename, blk.FileName())
+		if blk.GetFileName() != Filename {
+			t.Errorf("Expected Filename %s, got %s", Filename, blk.GetFileName())
 		}
 
 		if blk.Number() != Blknum {
@@ -125,13 +125,13 @@ func TestBlock(t *testing.T) {
 
 		// Test NextBlock
 		next := blk.NextBlock()
-		if next.Number() != 6 || next.FileName() != "test.db" {
+		if next.Number() != 6 || next.GetFileName() != "test.db" {
 			t.Error("NextBlock returned incorrect block")
 		}
 
 		// Test PrevBlock
 		prev := blk.PrevBlock()
-		if prev.Number() != 4 || prev.FileName() != "test.db" {
+		if prev.Number() != 4 || prev.GetFileName() != "test.db" {
 			t.Error("PrevBlock returned incorrect block")
 		}
 
@@ -371,8 +371,8 @@ func TestBlockId(t *testing.T) {
 		blknum := 5
 		blk := NewBlockId(filename, blknum)
 
-		if blk.FileName() != filename {
-			t.Errorf("Expected Filename %s, got %s", filename, blk.FileName())
+		if blk.GetFileName() != filename {
+			t.Errorf("Expected Filename %s, got %s", filename, blk.GetFileName())
 		}
 
 		if blk.Number() != blknum {
@@ -447,12 +447,12 @@ func TestBlockId(t *testing.T) {
 		blk := NewBlockId("test.db", 5)
 
 		next := blk.NextBlock()
-		if next.Number() != 6 || next.FileName() != "test.db" {
+		if next.Number() != 6 || next.GetFileName() != "test.db" {
 			t.Error("NextBlock returned incorrect block")
 		}
 
 		prev := blk.PrevBlock()
-		if prev.Number() != 4 || prev.FileName() != "test.db" {
+		if prev.Number() != 4 || prev.GetFileName() != "test.db" {
 			t.Error("PrevBlock returned incorrect block")
 		}
 
@@ -742,4 +742,153 @@ func TestConcurrentAccess(t *testing.T) {
 
 	// Wait for all operations to complete
 	wg.Wait()
+}
+
+func TestFileRename(t *testing.T) {
+	tempDir := filepath.Join(os.TempDir(), "simpledb_test_"+time.Now().Format("20060102150405"))
+	fm, err := NewFileMgr(tempDir, 512)
+	if err != nil {
+		t.Errorf("Could not create directory %s", err)
+	}
+	defer func() {
+		fm.Close()
+		os.RemoveAll(tempDir)
+	}()
+	file := "test_file"
+	blk := NewBlockId(file, 0)
+	p := NewPage(fm.BlockSize())
+	new_file := "test_new_file"
+	fm.Write(blk, p)
+	err = fm.RenameFile(blk, new_file)
+	if err != nil {
+		t.Errorf("Could not rename file %s", err)
+	}
+	want := new_file
+	got := blk.GetFileName()
+	if want != got {
+		t.Errorf("want %s but got %s", want, got)
+	}
+}
+
+func TestPreallocateFile(t *testing.T) {
+	tempDir := filepath.Join(os.TempDir(), "simpledb_test_"+time.Now().Format("20060102150405"))
+	fm, err := NewFileMgr(tempDir, 512)
+	if err != nil {
+		t.Errorf("Could not create directory %s", err)
+	}
+	defer func() {
+		fm.Close()
+		os.RemoveAll(tempDir)
+	}()
+	file := "test_file"
+	blk := NewBlockId(file, 0)
+	err = fm.PreallocateFile(blk, 512)
+	if err != nil {
+		t.Errorf("Could not preallocate file %s", err)
+	}
+}
+
+func TestPreallocateFileNonAlignedSize(t *testing.T) {
+	tempDir := filepath.Join(os.TempDir(), "simpledb_test_"+time.Now().Format("20060102150405"))
+	fm, err := NewFileMgr(tempDir, 512)
+	if err != nil {
+		t.Errorf("Could not create directory %s", err)
+	}
+	defer func() {
+		fm.Close()
+		os.RemoveAll(tempDir)
+	}()
+	file := "test_file"
+	blk := NewBlockId(file, 0)
+	err = fm.PreallocateFile(blk, 100) // Not multiple of 512
+	if err == nil {
+		t.Error("Expected error for non-block-aligned size, got nil")
+	}
+}
+
+func TestPreallocateLargeFile(t *testing.T) {
+	tempDir := filepath.Join(os.TempDir(), "simpledb_test_"+time.Now().Format("20060102150405"))
+	fm, err := NewFileMgr(tempDir, 512)
+	if err != nil {
+		t.Errorf("Could not create directory %s", err)
+	}
+	defer func() {
+		fm.Close()
+		os.RemoveAll(tempDir)
+	}()
+	file := "test_file"
+	blk := NewBlockId(file, 0)
+	size := int64(512 * 100) // 100 blocks
+	err = fm.PreallocateFile(blk, size)
+	if err != nil {
+		t.Errorf("Failed to preallocate large file: %v", err)
+	}
+
+	// Verify file size
+	f, _ := os.Stat(filepath.Join(tempDir, file))
+	if f.Size() != size {
+		t.Errorf("Expected file size %d, got %d", size, f.Size())
+	}
+}
+
+func TestPreallocateExistingFile(t *testing.T) {
+	tempDir := filepath.Join(os.TempDir(), "simpledb_test_"+time.Now().Format("20060102150405"))
+	fm, err := NewFileMgr(tempDir, 512)
+	if err != nil {
+		t.Errorf("Could not create directory %s", err)
+	}
+	defer func() {
+		fm.Close()
+		os.RemoveAll(tempDir)
+	}()
+	file := "test_file"
+	blk := NewBlockId(file, 0)
+	// First allocation
+	err = fm.PreallocateFile(blk, 1024) // 2 blocks
+	if err != nil {
+		t.Errorf("First preallocation failed: %v", err)
+	}
+
+	// Second smaller allocation (should be no-op)
+	err = fm.PreallocateFile(blk, 512) // 1 block
+	if err != nil {
+		t.Errorf("Second preallocation failed: %v", err)
+	}
+
+	// Verify size stayed at larger allocation
+	f, _ := os.Stat(filepath.Join(tempDir, file))
+	if f.Size() != 1024 {
+		t.Errorf("Expected file size 1024, got %d", f.Size())
+	}
+}
+
+func TestPreallocateFileErrors(t *testing.T) {
+	tempDir := filepath.Join(os.TempDir(), "simpledb_test_"+time.Now().Format("20060102150405"))
+	fm, err := NewFileMgr(tempDir, 512)
+	if err != nil {
+		t.Errorf("Could not create directory %s", err)
+	}
+	defer func() {
+		fm.Close()
+		os.RemoveAll(tempDir)
+	}()
+	file := "test_file"
+	blk := NewBlockId(file, 0)
+	if err != nil {
+		t.Errorf("An error occured %s", err)
+	}
+	invalidBlk := NewBlockId("", 0)
+	err = fm.PreallocateFile(invalidBlk, 512)
+	if err == nil {
+		t.Error("Expected error for invalid block, got nil")
+	}
+
+	// Test with read-only directory
+	if err := os.Chmod(tempDir, 0444); err != nil {
+		t.Fatalf("Failed to set directory readonly: %v", err)
+	}
+	err = fm.PreallocateFile(blk, 512)
+	if err == nil {
+		t.Error("Expected error for readonly directory, got nil")
+	}
 }

@@ -10,9 +10,10 @@ import (
 )
 
 type Page struct {
-	data   []byte
-	pageId uint64
-	mu     sync.RWMutex
+	data         []byte
+	pageId       uint64
+	mu           sync.RWMutex
+	IsCompressed bool
 }
 
 const (
@@ -205,6 +206,10 @@ func (p *Page) GetDate(offset int) (time.Time, error) {
 
 func (p *Page) Contents() []byte {
 	return p.data
+}
+
+func (p *Page) SetContents(data []byte) {
+	p.data = data
 }
 
 func trimZero(s []byte) []byte {
