@@ -110,22 +110,34 @@ func (bM *BufferMgr) pin(blk *kfile.BlockId) (*Buffer, error) {
 	for buff == nil && !bM.waitingTooLong(starttime) {
 		timer := time.NewTimer(MAX_TIME)
 		waiting := make(chan struct{})
+		done := make(chan struct{})
 
 		go func() {
 			bM.cond.L.Lock()
 			defer bM.cond.L.Unlock()
-			bM.cond.Wait()
-			close(waiting)
+
+			select {
+			case <-done:
+				return
+			default:
+				bM.cond.Wait()
+				select {
+				case <-done:
+				default:
+					close(waiting)
+				}
+			}
 		}()
 
 		select {
 		case <-waiting:
-
+			timer.Stop()
+			close(done)
 		case <-timer.C:
+			close(done)
 			return nil, fmt.Errorf("BufferAbortException: No buffers available after waiting %v", MAX_TIME)
 		}
 
-		timer.Stop()
 		buff = bM.Get(blk)
 		if buff == nil && bM.numAvailable > 0 {
 			buff = bM.Insert(blk)
