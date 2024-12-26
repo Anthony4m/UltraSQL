@@ -157,44 +157,44 @@ func TestPinAndUnpin(t *testing.T) {
 }
 
 // TestPinTimeout tests pinning with a timeout.
-//func TestPinTimeout(t *testing.T) {
-//	// Setup
-//	tempDir := filepath.Join(os.TempDir(), "simpledb_test_"+time.Now().Format("20060102150405"))
-//	blockSize := 400
-//	fm, err := kfile.NewFileMgr(tempDir, blockSize)
-//	if err != nil {
-//		t.Fatalf("Failed to create FileMgr: %v", err)
-//	}
-//	defer func() {
-//		fm.Close()
-//		os.RemoveAll(tempDir)
-//	}()
-//
-//	lm, _ := log.NewLogMgr(fm, "logfile.db")
-//	bufferMgr := NewBufferMgr(fm, lm, 1)
-//
-//	blk1, err := fm.Append("file1")
-//	blk2, err := fm.Append("file2")
-//	blk3, err := fm.Append("file3")
-//
-//	// Pin the only available blk
-//	buf1, _ := bufferMgr.pin(blk1)
-//	if buf1 == nil {
-//		t.Fatal("Failed to pin blk for block 1")
-//	}
-//
-//	// Attempt to pin another block, which should time out
-//	start := time.Now()
-//	buf2, _ := bufferMgr.pin(blk2)
-//	buf3, _ := bufferMgr.pin(blk3)
-//	fmt.Println(buf2)
-//	if buf3 != nil {
-//		t.Error("Expected nil blk due to timeout, but got a blk")
-//	}
-//	if time.Since(start) < MAX_TIME {
-//		t.Errorf("Expected wait time to be at least %v, but got %v", MAX_TIME, time.Since(start))
-//	}
-//}
+func TestPinTimeout(t *testing.T) {
+	// Setup
+	tempDir := filepath.Join(os.TempDir(), "simpledb_test_"+time.Now().Format("20060102150405"))
+	blockSize := 400
+	fm, err := kfile.NewFileMgr(tempDir, blockSize)
+	if err != nil {
+		t.Fatalf("Failed to create FileMgr: %v", err)
+	}
+	defer func() {
+		fm.Close()
+		os.RemoveAll(tempDir)
+	}()
+
+	lm, _ := log.NewLogMgr(fm, "logfile.db")
+	bufferMgr := NewBufferMgr(fm, lm, 1)
+
+	blk1, err := fm.Append("file1")
+	blk2, err := fm.Append("file2")
+	blk3, err := fm.Append("file3")
+
+	// Pin the only available blk
+	buf1, _ := bufferMgr.pin(blk1)
+	if buf1 == nil {
+		t.Fatal("Failed to pin blk for block 1")
+	}
+
+	// Attempt to pin another block, which should time out
+	start := time.Now()
+	buf2, _ := bufferMgr.pin(blk2)
+	buf3, _ := bufferMgr.pin(blk3)
+	fmt.Println(buf2)
+	if buf3 != nil {
+		t.Error("Expected nil blk due to timeout, but got a blk")
+	}
+	if time.Since(start) < MAX_TIME {
+		t.Errorf("Expected wait time to be at least %v, but got %v", MAX_TIME, time.Since(start))
+	}
+}
 
 // TestFlushAll tests flushing buffers for a specific transaction.
 func TestFlushAll(t *testing.T) {

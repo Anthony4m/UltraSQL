@@ -83,6 +83,8 @@ func (bM *BufferMgr) FlushAll(txtnum int) {
 }
 
 func (bM *BufferMgr) unpin(buff *Buffer) {
+	bM.mu.Lock()
+	defer bM.mu.Unlock()
 
 	err := buff.unpin()
 	if err != nil {
