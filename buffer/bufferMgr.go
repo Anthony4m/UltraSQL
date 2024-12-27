@@ -2,6 +2,7 @@ package buffer
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 	"ultraSQL/kfile"
@@ -21,9 +22,14 @@ type BufferMgr struct {
 	frequency     int
 	hitCounter    int
 	missCounter   int
+	availableCh   chan struct{}
 }
 
 const MAX_TIME = 1000 * time.Millisecond
+
+var (
+	ErrNoUnpinnedBuffers = fmt.Errorf("no unpinned buffers available for eviction")
+)
 
 func NewBufferMgr(fm *kfile.FileMgr, lm *log.LogMgr, numbuffs int) *BufferMgr {
 	bm := &BufferMgr{
@@ -36,6 +42,7 @@ func NewBufferMgr(fm *kfile.FileMgr, lm *log.LogMgr, numbuffs int) *BufferMgr {
 		hitCounter:    0,
 		missCounter:   0,
 	}
+	bm.availableCh = make(chan struct{}, numbuffs)
 	bm.cond = sync.NewCond(&bm.mu)
 	return bm
 }
@@ -92,7 +99,10 @@ func (bM *BufferMgr) unpin(buff *Buffer) {
 	}
 	if !buff.IsPinned() {
 		bM.numAvailable++
-		bM.cond.Broadcast()
+		select {
+		case bM.availableCh <- struct{}{}:
+		default:
+		}
 	}
 }
 
@@ -100,44 +110,23 @@ func (bM *BufferMgr) pin(blk *kfile.BlockId) (*Buffer, error) {
 	bM.mu.Lock()
 	defer bM.mu.Unlock()
 
-	starttime := time.Now()
+	startTime := time.Now()
 
 	buff := bM.Get(blk)
 	if buff == nil && bM.numAvailable > 0 {
 		buff = bM.Insert(blk)
 	}
-
-	for buff == nil && !bM.waitingTooLong(starttime) {
-		timer := time.NewTimer(MAX_TIME)
-		waiting := make(chan struct{})
-		done := make(chan struct{})
-
-		go func() {
-			bM.cond.L.Lock()
-			defer bM.cond.L.Unlock()
-
-			select {
-			case <-done:
-				return
-			default:
-				bM.cond.Wait()
-				select {
-				case <-done:
-				default:
-					close(waiting)
-				}
-			}
-		}()
+	for buff == nil && !bM.waitingTooLong(startTime) {
+		bM.mu.Unlock()
 
 		select {
-		case <-waiting:
-			timer.Stop()
-			close(done)
-		case <-timer.C:
-			close(done)
+		case <-bM.availableCh:
+		case <-time.After(MAX_TIME):
+			bM.mu.Lock()
 			return nil, fmt.Errorf("BufferAbortException: No buffers available after waiting %v", MAX_TIME)
 		}
 
+		bM.mu.Lock()
 		buff = bM.Get(blk)
 		if buff == nil && bM.numAvailable > 0 {
 			buff = bM.Insert(blk)
@@ -155,32 +144,58 @@ func (bM *BufferMgr) waitingTooLong(startTime time.Time) bool {
 	return time.Since(startTime) > MAX_TIME
 }
 
-func (bM *BufferMgr) Insert(blk *kfile.BlockId) *Buffer {
-	if buff, exists := bM.bufferPool[blk]; exists {
-		bM.moveToHead(buff)
+func (bm *BufferMgr) Insert(blk *kfile.BlockId) *Buffer {
+	if buff, exists := bm.bufferPool[blk]; exists {
+		bm.moveToHead(buff)
 		buff.pin()
 		return buff
 	}
 
-	if bM.numAvailable == 0 {
-		for bM.lruTail != nil && bM.lruTail.IsPinned() {
-			bM.lruTail = bM.lruTail.prev
-		}
-		if bM.lruTail == nil {
+	if bm.numAvailable == 0 {
+		evictedBuff, err := bm.findAndEvictBuffer()
+		if err != nil {
+			_ = fmt.Errorf("failed to evict buffer: %w", err)
 			return nil
 		}
-		if bM.lruTail.isDirty() {
-			bM.lruTail.flush()
-		}
-		delete(bM.bufferPool, bM.lruTail.blk)
+
+		delete(bm.bufferPool, evictedBuff.blk)
 	}
 
-	buff := NewBuffer(bM.fm, bM.lm)
-	bM.bufferPool[blk] = buff
-	bM.moveToHead(buff)
+	buff := NewBuffer(bm.fm, bm.lm)
+
+	// Add new buffer to pool
+	bm.bufferPool[blk] = buff
+	err := buff.assignToBlock(blk)
+	if err != nil {
+		if !strings.Contains(err.Error(), "EOF") {
+			panic(err)
+		}
+	}
+	bm.moveToHead(buff)
 	buff.pin()
-	bM.numAvailable--
+	bm.numAvailable--
+
 	return buff
+}
+
+func (bM *BufferMgr) findAndEvictBuffer() (*Buffer, error) {
+	current := bM.lruTail
+
+	for current != nil && current.IsPinned() {
+		current = current.prev
+	}
+
+	if current == nil {
+		return nil, ErrNoUnpinnedBuffers
+	}
+
+	if current.isDirty() {
+		if err := current.flush(); err != nil {
+			return nil, fmt.Errorf("failed to flush dirty buffer: %w", err)
+		}
+	}
+
+	return current, nil
 }
 
 func (bM *BufferMgr) Get(blk *kfile.BlockId) *Buffer {
