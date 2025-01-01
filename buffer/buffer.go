@@ -6,12 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"ultraSQL/kfile"
-	"ultraSQL/log"
 )
 
 type Buffer struct {
 	fm             *kfile.FileMgr
-	lm             *log.LogMgr
 	contents       *kfile.Page
 	blk            *kfile.BlockId
 	pins           int
@@ -26,10 +24,9 @@ const (
 	PageSizeThreshold = 8 * 1024
 )
 
-func NewBuffer(fm *kfile.FileMgr, lm *log.LogMgr) *Buffer {
+func NewBuffer(fm *kfile.FileMgr) *Buffer {
 	return &Buffer{
 		fm:       fm,
-		lm:       lm,
 		contents: kfile.NewPage(fm.BlockSize()),
 		blk:      nil,
 		pins:     0,
@@ -40,6 +37,9 @@ func NewBuffer(fm *kfile.FileMgr, lm *log.LogMgr) *Buffer {
 
 func (b *Buffer) GetContents() *kfile.Page {
 	return b.contents
+}
+func (b *Buffer) SetContents(p *kfile.Page) {
+	b.contents = p
 }
 
 func (b *Buffer) Block() *kfile.BlockId {
@@ -63,7 +63,7 @@ func (b *Buffer) modifyingTx() int {
 }
 
 func (b *Buffer) assignToBlock(block *kfile.BlockId) error {
-	if err := b.flush(); err != nil {
+	if err := b.Flush(); err != nil {
 		return err
 	}
 	b.blk = block
@@ -74,12 +74,8 @@ func (b *Buffer) assignToBlock(block *kfile.BlockId) error {
 	return nil
 }
 
-func (b *Buffer) flush() error {
+func (b *Buffer) Flush() error {
 	if b.txnum > 0 && b.blk != nil {
-		err := b.lm.FlushLSN(b.lsn)
-		if err != nil {
-			return err
-		}
 		if err := b.fm.Write(b.blk, b.contents); err != nil {
 			return err
 		}
@@ -92,13 +88,13 @@ func (b *Buffer) isDirty() bool {
 	return b.Dirty
 }
 
-func (b *Buffer) pin() {
+func (b *Buffer) Pin() {
 	b.pins++
 }
 
-func (b *Buffer) unpin() error {
+func (b *Buffer) UnPin() error {
 	if b.pins <= 0 {
-		return errors.New("unpin operation failed: blk is not pinned")
+		return errors.New("UnPin operation failed: blk is not pinned")
 	}
 	b.pins--
 	return nil
@@ -144,5 +140,20 @@ func (b *Buffer) decompressPage(page *kfile.Page) error {
 
 	page.SetContents(buf.Bytes())
 	page.IsCompressed = false
+	return nil
+}
+
+func (b *Buffer) FlushLSN(lsn int) error {
+	if lsn >= b.lsn {
+		return b.Flush()
+	}
+	return nil
+}
+
+func (b *Buffer) LogFlush(blk *kfile.BlockId) error {
+	b.blk = blk
+	if err := b.fm.Write(b.blk, b.contents); err != nil {
+		return err
+	}
 	return nil
 }
