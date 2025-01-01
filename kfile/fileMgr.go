@@ -79,20 +79,17 @@ func NewFileMgr(dbDirectory string, blocksize int) (*FileMgr, error) {
 	fm.metaData = metadata
 	return fm, nil
 }
-
 func (fm *FileMgr) addMetaData(metaData FileMetadata) {
 	fm.metaData = FileMetadata{metaData.CreatedAt,
 		metaData.ModifiedAt, metaData.SizeLimit,
 		metaData.FileSize, metaData.BlockCount,
 		metaData.LastAccessed}
 }
-
 func NewMetaData(created_at time.Time) FileMetadata {
 	return FileMetadata{
 		CreatedAt: created_at,
 	}
 }
-
 func (fm *FileMgr) PreallocateFile(blk *BlockId, size int64) error {
 	if size%int64(fm.blocksize) != 0 {
 		return fmt.Errorf("size must be multiple of blocksize %d", fm.blocksize)
@@ -146,7 +143,6 @@ func (fm *FileMgr) PreallocateFile(blk *BlockId, size int64) error {
 
 	return nil
 }
-
 func (fm *FileMgr) getFile(filename string) (*os.File, error) {
 
 	if f, exists := fm.openFiles[filename]; exists {
@@ -192,7 +188,6 @@ func (fm *FileMgr) Read(blk *BlockId, p *Page) error {
 
 	return nil
 }
-
 func (fm *FileMgr) Write(blk *BlockId, p *Page) error {
 
 	fm.mutex.Lock()
@@ -289,15 +284,12 @@ func (fm *FileMgr) LengthLocked(filename string) (int, error) {
 	numBlocks := int(stat.Size() / int64(fm.blocksize))
 	return numBlocks, nil
 }
-
 func (fm *FileMgr) IsNew() bool {
 	return fm.isNew
 }
-
 func (fm *FileMgr) BlockSize() int {
 	return fm.blocksize
 }
-
 func (fm *FileMgr) Close() error {
 	var firstErr error
 	for filename, f := range fm.openFiles {
@@ -313,29 +305,24 @@ func (fm *FileMgr) Close() error {
 func (fm *FileMgr) BlocksRead() int {
 	return fm.blocksRead
 }
-
 func (fm *FileMgr) BlocksWritten() int {
 	return fm.blocksWritten
 }
-
 func (fm *FileMgr) addToReadLog(entry ReadWriteLogEntry) {
 	if len(fm.readLog) >= maxLogEntries {
 		fm.readLog = fm.readLog[1:]
 	}
 	fm.readLog = append(fm.readLog, entry)
 }
-
 func (fm *FileMgr) addToWriteLog(entry ReadWriteLogEntry) {
 	if len(fm.writeLog) >= maxLogEntries {
 		fm.writeLog = fm.writeLog[1:]
 	}
 	fm.writeLog = append(fm.writeLog, entry)
 }
-
 func (fm *FileMgr) ReadLog() []ReadWriteLogEntry {
 	return fm.readLog
 }
-
 func (fm *FileMgr) WriteLog() []ReadWriteLogEntry {
 	return fm.writeLog
 }
@@ -353,7 +340,6 @@ func (fm *FileMgr) ensureFileSize(blk *BlockId, requiredBlocks int) error {
 
 	return nil
 }
-
 func (fm *FileMgr) RenameFile(blk *BlockId, newFileName string) error {
 	fm.mutex.Lock()
 	defer fm.mutex.Unlock()
@@ -398,7 +384,6 @@ func (fm *FileMgr) RenameFile(blk *BlockId, newFileName string) error {
 
 	return nil
 }
-
 func (fm *FileMgr) DeleteFile(filename string) error {
 	fm.mutex.Lock()
 	defer fm.mutex.Unlock()
@@ -419,7 +404,6 @@ func (fm *FileMgr) DeleteFile(filename string) error {
 
 	return nil
 }
-
 func (fm *FileMgr) checkSizeLimit(filename string, additionalBytes int64) error {
 	if fm.metaData.SizeLimit <= 0 {
 		return nil
@@ -441,7 +425,6 @@ func (fm *FileMgr) checkSizeLimit(filename string, additionalBytes int64) error 
 
 	return nil
 }
-
 func (fm *FileMgr) ValidateFile(filename string) error {
 	f, err := fm.getFile(filename)
 	if err != nil {
