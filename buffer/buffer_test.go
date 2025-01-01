@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 	"ultraSQL/kfile"
-	"ultraSQL/log"
 )
 
 func TestBuffer(t *testing.T) {
@@ -23,13 +22,11 @@ func TestBuffer(t *testing.T) {
 		fm.Close()
 		os.RemoveAll(tempDir)
 	}()
-
+	bm := NewBufferMgr(fm, 3)
 	filename := "bufferTest.db"
-	lm, _ := log.NewLogMgr(fm, "logfile.db")
-	bm := NewBufferMgr(fm, lm, 3)
 	//blk1, _ := fm.Append("bufferTest.db")
 
-	buff1, _ := bm.pin(kfile.NewBlockId("bufferTest.db", 1))
+	buff1, _ := bm.Pin(kfile.NewBlockId("bufferTest.db", 1))
 	p := buff1.GetContents()
 	n, err := p.GetInt(80)
 	if err != nil {
@@ -38,19 +35,19 @@ func TestBuffer(t *testing.T) {
 	p.SetInt(80, n+1)
 	buff1.MarkModified(1, 0)
 	fmt.Printf("The new value is %d", n+1)
-	bm.unpin(buff1)
+	bm.UnPin(buff1)
 
-	buff2, _ := bm.pin(kfile.NewBlockId("bufferTest", 2))
-	buff3, _ := bm.pin(kfile.NewBlockId("bufferTest", 3))
-	buff4, _ := bm.pin(kfile.NewBlockId("bufferTest", 4))
+	buff2, _ := bm.Pin(kfile.NewBlockId("bufferTest", 2))
+	buff3, _ := bm.Pin(kfile.NewBlockId("bufferTest", 3))
+	buff4, _ := bm.Pin(kfile.NewBlockId("bufferTest", 4))
 	fmt.Println(buff3, buff4)
 
-	bm.unpin(buff2)
-	buff2, _ = bm.pin(kfile.NewBlockId(filename, 1))
+	bm.UnPin(buff2)
+	buff2, _ = bm.Pin(kfile.NewBlockId(filename, 1))
 	p2 := buff2.GetContents()
 	p2.SetInt(80, 9999)
 	buff2.MarkModified(1, 0)
-	bm.unpin(buff2)
+	bm.UnPin(buff2)
 }
 
 // MockBuffer is a mock implementation of the Buffer interface.
@@ -100,8 +97,7 @@ func TestNewBufferMgr(t *testing.T) {
 		os.RemoveAll(tempDir)
 	}()
 
-	lm, _ := log.NewLogMgr(fm, "logfile.db")
-	bufferMgr := NewBufferMgr(fm, lm, 3)
+	bufferMgr := NewBufferMgr(fm, 3)
 
 	if bufferMgr.available() != 3 {
 		t.Errorf("Expected 3 available buffers, got %d", bufferMgr.available())
@@ -122,8 +118,7 @@ func TestPinAndUnpin(t *testing.T) {
 		os.RemoveAll(tempDir)
 	}()
 
-	lm, _ := log.NewLogMgr(fm, "logfile.db")
-	bufferMgr := NewBufferMgr(fm, lm, 2)
+	bufferMgr := NewBufferMgr(fm, 2)
 
 	//blk1 := &kfile.BlockId{Filename: "file1", Blknum: 1}
 	//blk2 := &kfile.BlockId{Filename: "file1", Blknum: 2}
@@ -132,27 +127,27 @@ func TestPinAndUnpin(t *testing.T) {
 	blk2, err := fm.Append("file2")
 
 	// Pin first block
-	buf1, _ := bufferMgr.pin(blk1)
+	buf1, _ := bufferMgr.Pin(blk1)
 	if buf1 == nil {
-		t.Fatal("Failed to pin blk for block 1")
+		t.Fatal("Failed to Pin blk for block 1")
 	}
 	if bufferMgr.available() != 1 {
 		t.Errorf("Expected 1 available blk, got %d", bufferMgr.available())
 	}
 
 	// Pin second block
-	buf2, _ := bufferMgr.pin(blk2)
+	buf2, _ := bufferMgr.Pin(blk2)
 	if buf2 == nil {
-		t.Fatal("Failed to pin blk for block 2")
+		t.Fatal("Failed to Pin blk for block 2")
 	}
 	if bufferMgr.available() != 0 {
 		t.Errorf("Expected 0 available buffers, got %d", bufferMgr.available())
 	}
 
 	// Unpin first block
-	bufferMgr.unpin(buf1)
+	bufferMgr.UnPin(buf1)
 	if bufferMgr.available() != 1 {
-		t.Errorf("Expected 1 available blk after unpin, got %d", bufferMgr.available())
+		t.Errorf("Expected 1 available blk after UnPin, got %d", bufferMgr.available())
 	}
 }
 
@@ -170,23 +165,22 @@ func TestPinTimeout(t *testing.T) {
 		os.RemoveAll(tempDir)
 	}()
 
-	lm, _ := log.NewLogMgr(fm, "logfile.db")
-	bufferMgr := NewBufferMgr(fm, lm, 1)
+	bufferMgr := NewBufferMgr(fm, 1)
 
 	blk1, err := fm.Append("file1")
 	blk2, err := fm.Append("file2")
 	blk3, err := fm.Append("file3")
 
 	// Pin the only available blk
-	buf1, _ := bufferMgr.pin(blk1)
+	buf1, _ := bufferMgr.Pin(blk1)
 	if buf1 == nil {
-		t.Fatal("Failed to pin blk for block 1")
+		t.Fatal("Failed to Pin blk for block 1")
 	}
 
-	// Attempt to pin another block, which should time out
+	// Attempt to Pin another block, which should time out
 	start := time.Now()
-	buf2, _ := bufferMgr.pin(blk2)
-	buf3, _ := bufferMgr.pin(blk3)
+	buf2, _ := bufferMgr.Pin(blk2)
+	buf3, _ := bufferMgr.Pin(blk3)
 	fmt.Println(buf2)
 	if buf3 != nil {
 		t.Error("Expected nil blk due to timeout, but got a blk")
@@ -210,20 +204,19 @@ func TestFlushAll(t *testing.T) {
 		os.RemoveAll(tempDir)
 	}()
 
-	lm, _ := log.NewLogMgr(fm, "logfile.db")
-	bufferMgr := NewBufferMgr(fm, lm, 2)
+	bufferMgr := NewBufferMgr(fm, 2)
 
 	blk1 := &kfile.BlockId{Filename: "file1", Blknum: 1}
 
 	// Pin and modify a blk
-	buf1, _ := bufferMgr.pin(blk1)
+	buf1, _ := bufferMgr.Pin(blk1)
 	if buf1 == nil {
-		t.Fatal("Failed to pin blk for block 1")
+		t.Fatal("Failed to Pin blk for block 1")
 	}
 
-	bufferMgr.FlushAll(0) // Mock logic to flush based on txid
+	bufferMgr.FlushAll(0) // Mock logic to Flush based on txid
 
-	// Verify no crash and potential mock flush calls
+	// Verify no crash and potential mock Flush calls
 }
 
 // DeterministicBufferSimulator wraps BufferMgr to provide controlled testing
@@ -234,9 +227,9 @@ type DeterministicBufferSimulator struct {
 }
 
 // NewDeterministicBufferSimulator creates a simulator for testing
-func NewDeterministicBufferSimulator(fm *kfile.FileMgr, lm *log.LogMgr, numbuffs int) *DeterministicBufferSimulator {
+func NewDeterministicBufferSimulator(fm *kfile.FileMgr, numbuffs int) *DeterministicBufferSimulator {
 	return &DeterministicBufferSimulator{
-		bufferMgr: NewBufferMgr(fm, lm, numbuffs),
+		bufferMgr: NewBufferMgr(fm, numbuffs),
 		testLog:   make([]string, 0),
 	}
 }
@@ -261,9 +254,8 @@ func TestDeterministicBufferAllocation(t *testing.T) {
 		os.RemoveAll(tempDir)
 	}()
 
-	lm, _ := log.NewLogMgr(fm, "logfile.db")
 	// Create a simulator with a fixed number of buffers
-	simulator := NewDeterministicBufferSimulator(fm, lm, 5)
+	simulator := NewDeterministicBufferSimulator(fm, 5)
 	bufferMgr := simulator.bufferMgr
 
 	// Test initial availability
@@ -279,9 +271,9 @@ func TestDeterministicBufferAllocation(t *testing.T) {
 	// Pin multiple blocks
 	pinnedBuffers := make([]*Buffer, len(testBlocks))
 	for i, blk := range testBlocks {
-		buff, err := bufferMgr.pin(blk)
+		buff, err := bufferMgr.Pin(blk)
 		if err != nil {
-			t.Fatalf("Failed to pin block %d: %v", i, err)
+			t.Fatalf("Failed to Pin block %d: %v", i, err)
 		}
 		pinnedBuffers[i] = buff
 	}
@@ -294,7 +286,7 @@ func TestDeterministicBufferAllocation(t *testing.T) {
 
 	// Unpin buffers
 	for _, buff := range pinnedBuffers {
-		bufferMgr.unpin(buff)
+		bufferMgr.UnPin(buff)
 	}
 
 	// Verify availability is back to initial state
@@ -317,17 +309,15 @@ func BenchmarkBufferManagerConcurrency(b *testing.B) {
 		os.RemoveAll(tempDir)
 	}()
 
-	lm, _ := log.NewLogMgr(fm, "logfile.db")
-
-	bufferMgr := NewBufferMgr(fm, lm, 10)
+	bufferMgr := NewBufferMgr(fm, 10)
 
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		blk := &kfile.BlockId{Filename: "file1", Blknum: 1}
 		for pb.Next() {
-			buff, err := bufferMgr.pin(blk)
+			buff, err := bufferMgr.Pin(blk)
 			if err == nil {
-				bufferMgr.unpin(buff)
+				bufferMgr.UnPin(buff)
 			}
 		}
 	})
@@ -345,10 +335,8 @@ func TestDeterministicConcurrentBufferAccess(t *testing.T) {
 		fm.Close()
 		os.RemoveAll(tempDir)
 	}()
-
-	lm, _ := log.NewLogMgr(fm, "logfile.db")
 	// Create a simulator with a limited number of buffers
-	simulator := NewDeterministicBufferSimulator(fm, lm, 3)
+	simulator := NewDeterministicBufferSimulator(fm, 3)
 	bufferMgr := simulator.bufferMgr
 
 	// Concurrent pinning and unpinning simulation
@@ -363,8 +351,8 @@ func TestDeterministicConcurrentBufferAccess(t *testing.T) {
 			// Create a unique block for each goroutine
 			blk := &kfile.BlockId{Filename: "file1", Blknum: 1}
 
-			// Attempt to pin
-			buff, err := bufferMgr.pin(blk)
+			// Attempt to Pin
+			buff, err := bufferMgr.Pin(blk)
 			if err != nil {
 				simulator.logEvent(fmt.Sprintf("Pin failed for goroutine %d", id))
 				return
@@ -374,8 +362,8 @@ func TestDeterministicConcurrentBufferAccess(t *testing.T) {
 			time.Sleep(10 * time.Millisecond)
 
 			// Unpin
-			bufferMgr.unpin(buff)
-			simulator.logEvent(fmt.Sprintf("Goroutine %d completed pin/unpin", id))
+			bufferMgr.UnPin(buff)
+			simulator.logEvent(fmt.Sprintf("Goroutine %d completed Pin/UnPin", id))
 		}(i)
 	}
 
@@ -402,13 +390,11 @@ func TestDeterministicBufferOverflow(t *testing.T) {
 		os.RemoveAll(tempDir)
 	}()
 
-	lm, _ := log.NewLogMgr(fm, "logfile.db")
-
 	// Create a simulator with very limited buffers
 	bufferCount := 2
-	bufferMgr := NewBufferMgr(fm, lm, bufferCount)
+	bufferMgr := NewBufferMgr(fm, bufferCount)
 
-	// Create more pin requests than available buffers
+	// Create more Pin requests than available buffers
 	blocks := make([]*kfile.BlockId, bufferCount+6)
 	for i := range blocks {
 		blocks[i] = &kfile.BlockId{
@@ -420,17 +406,17 @@ func TestDeterministicBufferOverflow(t *testing.T) {
 	// First two pins should succeed
 	firstBuffers := make([]*Buffer, bufferCount)
 	for i := 0; i < bufferCount; i++ {
-		buff, err := bufferMgr.pin(blocks[i])
+		buff, err := bufferMgr.Pin(blocks[i])
 		if err != nil {
-			t.Fatalf("Failed to pin block %d: %v", i, err)
+			t.Fatalf("Failed to Pin block %d: %v", i, err)
 		}
 		firstBuffers[i] = buff
 	}
 
-	_, pinErr := bufferMgr.pin(blocks[bufferCount])
+	_, pinErr := bufferMgr.Pin(blocks[bufferCount])
 	if pinErr == nil {
 		t.Errorf("Expected an abortion got a block: %v", pinErr)
 	}
 
-	bufferMgr.unpin(firstBuffers[0])
+	bufferMgr.UnPin(firstBuffers[0])
 }
