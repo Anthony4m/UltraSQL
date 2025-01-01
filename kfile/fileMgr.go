@@ -233,7 +233,7 @@ func (fm *FileMgr) Write(blk *BlockId, p *Page) error {
 func (fm *FileMgr) Append(filename string) (*BlockId, error) {
 	fm.mutex.Lock()
 	defer fm.mutex.Unlock()
-	newblknum, err := fm.lengthLocked(filename)
+	newblknum, err := fm.LengthLocked(filename)
 	if err != nil {
 		return nil, fmt.Errorf("failed to determine length for file %s: %v", filename, err)
 	}
@@ -267,16 +267,16 @@ func (fm *FileMgr) Append(filename string) (*BlockId, error) {
 }
 
 func (fm *FileMgr) Length(filename string) (int, error) {
-	return fm.lengthLocked(filename)
+	return fm.LengthLocked(filename)
 }
 func (fm *FileMgr) NewLength(filename string) int {
-	locked, err := fm.lengthLocked(filename)
+	locked, err := fm.LengthLocked(filename)
 	if err != nil {
 		return 0
 	}
 	return locked
 }
-func (fm *FileMgr) lengthLocked(filename string) (int, error) {
+func (fm *FileMgr) LengthLocked(filename string) (int, error) {
 	f, err := fm.getFile(filename)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get file %s: %v", filename, err)
