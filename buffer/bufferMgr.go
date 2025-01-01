@@ -6,7 +6,6 @@ import (
 	"sync"
 	"time"
 	"ultraSQL/kfile"
-	"ultraSQL/log"
 )
 
 type BufferMgr struct {
@@ -17,7 +16,6 @@ type BufferMgr struct {
 	lruHead       *Buffer
 	lruTail       *Buffer
 	fm            *kfile.FileMgr
-	lm            *log.LogMgr
 	accessCounter uint64
 	frequency     int
 	hitCounter    int
@@ -31,12 +29,11 @@ var (
 	ErrNoUnpinnedBuffers = fmt.Errorf("no unpinned buffers available for eviction")
 )
 
-func NewBufferMgr(fm *kfile.FileMgr, lm *log.LogMgr, numbuffs int) *BufferMgr {
+func NewBufferMgr(fm *kfile.FileMgr, numbuffs int) *BufferMgr {
 	bm := &BufferMgr{
 		bufferPool:    make(map[*kfile.BlockId]*Buffer, numbuffs),
 		numAvailable:  numbuffs,
 		fm:            fm,
-		lm:            lm,
 		accessCounter: 0,
 		frequency:     0,
 		hitCounter:    0,
@@ -84,16 +81,16 @@ func (bM *BufferMgr) FlushAll(txtnum int) {
 	defer bM.mu.RUnlock()
 	for _, buff := range bM.bufferPool {
 		if buff.modifyingTx() == txtnum {
-			buff.flush()
+			buff.Flush()
 		}
 	}
 }
 
-func (bM *BufferMgr) unpin(buff *Buffer) {
+func (bM *BufferMgr) UnPin(buff *Buffer) {
 	bM.mu.Lock()
 	defer bM.mu.Unlock()
 
-	err := buff.unpin()
+	err := buff.UnPin()
 	if err != nil {
 		panic(err)
 	}
@@ -106,7 +103,7 @@ func (bM *BufferMgr) unpin(buff *Buffer) {
 	}
 }
 
-func (bM *BufferMgr) pin(blk *kfile.BlockId) (*Buffer, error) {
+func (bM *BufferMgr) Pin(blk *kfile.BlockId) (*Buffer, error) {
 	bM.mu.Lock()
 	defer bM.mu.Unlock()
 
@@ -147,7 +144,7 @@ func (bM *BufferMgr) waitingTooLong(startTime time.Time) bool {
 func (bm *BufferMgr) Insert(blk *kfile.BlockId) *Buffer {
 	if buff, exists := bm.bufferPool[blk]; exists {
 		bm.moveToHead(buff)
-		buff.pin()
+		buff.Pin()
 		return buff
 	}
 
@@ -161,7 +158,7 @@ func (bm *BufferMgr) Insert(blk *kfile.BlockId) *Buffer {
 		delete(bm.bufferPool, evictedBuff.blk)
 	}
 
-	buff := NewBuffer(bm.fm, bm.lm)
+	buff := NewBuffer(bm.fm)
 
 	// Add new buffer to pool
 	bm.bufferPool[blk] = buff
@@ -172,7 +169,7 @@ func (bm *BufferMgr) Insert(blk *kfile.BlockId) *Buffer {
 		}
 	}
 	bm.moveToHead(buff)
-	buff.pin()
+	buff.Pin()
 	bm.numAvailable--
 
 	return buff
@@ -190,8 +187,8 @@ func (bM *BufferMgr) findAndEvictBuffer() (*Buffer, error) {
 	}
 
 	if current.isDirty() {
-		if err := current.flush(); err != nil {
-			return nil, fmt.Errorf("failed to flush dirty buffer: %w", err)
+		if err := current.Flush(); err != nil {
+			return nil, fmt.Errorf("failed to Flush dirty buffer: %w", err)
 		}
 	}
 
@@ -201,7 +198,7 @@ func (bM *BufferMgr) findAndEvictBuffer() (*Buffer, error) {
 func (bM *BufferMgr) Get(blk *kfile.BlockId) *Buffer {
 	if _, exists := bM.bufferPool[blk]; exists {
 		buff := bM.bufferPool[blk]
-		buff.pin()
+		buff.Pin()
 		bM.updateAccessTime(buff)
 		return buff
 	}
