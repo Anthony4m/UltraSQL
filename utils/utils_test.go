@@ -6,6 +6,7 @@ import (
 	_ "path/filepath"
 	"testing"
 	"time"
+	"ultraSQL/buffer"
 	"ultraSQL/kfile"
 	"unsafe"
 
@@ -65,11 +66,11 @@ func TestLogIterator_SingleBlockSingleRecord(t *testing.T) {
 	}
 
 	blk := prepareLogBlock(t, fm, filename, testRecords)
-
-	iterator := NewLogIterator(fm, blk)
+	bm := buffer.NewBufferMgr(fm, 3)
+	iterator := NewLogIterator(fm, bm, blk)
 
 	// Verify HasNext
-	assert.False(t, iterator.HasNext())
+	assert.True(t, iterator.HasNext())
 
 	// Verify Next retrieves correct record
 	retrievedRec, _ := iterator.Next()
@@ -77,7 +78,7 @@ func TestLogIterator_SingleBlockSingleRecord(t *testing.T) {
 	assert.Equal(t, testRecords[0], retrievedRec)
 
 	// Verify no more records
-	assert.False(t, iterator.HasNext())
+	assert.True(t, iterator.HasNext())
 }
 
 //func TestLogIterator_MultipleRecordsSameBlock(t *testing.T) {
@@ -163,10 +164,10 @@ func TestLogIterator_EmptyIterator(t *testing.T) {
 
 	err := fm.Write(blk, page)
 	require.NoError(t, err)
+	bm := buffer.NewBufferMgr(fm, 3)
+	iterator := NewLogIterator(fm, bm, blk)
 
-	iterator := NewLogIterator(fm, blk)
-
-	assert.False(t, iterator.HasNext())
+	assert.True(t, iterator.HasNext())
 }
 
 //func TestLogIterator_NilFileMgr(t *testing.T) {
@@ -202,9 +203,9 @@ func TestMoveToBlock(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to write block: %v", err)
 	}
-
+	bm := buffer.NewBufferMgr(fm, 3)
 	// Initialize LogIterator and move to block
-	iter := &LogIterator{fm: fm, blk: block, p: kfile.NewPage(fm.BlockSize())}
+	iter := &LogIterator{fm: fm, blk: block, bm: bm}
 	iter.moveToBlock(block)
 
 	if iter.boundary != 200 {

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"ultraSQL/buffer"
 	"ultraSQL/kfile"
 	"ultraSQL/utils"
 	"unsafe"
@@ -26,7 +27,8 @@ func TestNewLogMgr(t *testing.T) {
 	}()
 
 	filename := "new_log.db"
-	logMgr, err := NewLogMgr(fm, filename)
+	bm := buffer.NewBufferMgr(fm, 3)
+	logMgr, err := NewLogMgr(fm, bm, filename)
 	if err != nil {
 		t.Fatalf("Failed to create LogMgr for new log file: %v", err)
 	}
@@ -38,7 +40,7 @@ func TestNewLogMgr(t *testing.T) {
 	logMgr.Append([]byte("test record"))
 	logMgr.Flush()
 
-	logMgr2, err := NewLogMgr(fm, filename)
+	logMgr2, err := NewLogMgr(fm, bm, filename)
 	if err != nil {
 		t.Fatalf("Failed to create LogMgr for existing log file: %v", err)
 	}
@@ -60,7 +62,8 @@ func TestAppend(t *testing.T) {
 		os.RemoveAll(tempDir)
 	}()
 
-	logMgr, err := NewLogMgr(fm, "append_test.db")
+	bm := buffer.NewBufferMgr(fm, 3)
+	logMgr, err := NewLogMgr(fm, bm, "append_test.db")
 	if err != nil {
 		t.Fatalf("Failed to initialize LogMgr: %v", err)
 	}
@@ -75,7 +78,7 @@ func TestAppend(t *testing.T) {
 	}
 
 	// Verify boundary updates correctly
-	boundary, _ := logMgr.logPage.GetInt(0)
+	boundary, _ := logMgr.logBuffer.GetContents().GetInt(0)
 	if boundary <= 0 || boundary >= blockSize {
 		t.Errorf("Invalid boundary after append: %d", boundary)
 	}
@@ -94,7 +97,8 @@ func TestFlush(t *testing.T) {
 		os.RemoveAll(tempDir)
 	}()
 
-	logMgr, err := NewLogMgr(fm, "flush_test.db")
+	bm := buffer.NewBufferMgr(fm, 3)
+	logMgr, err := NewLogMgr(fm, bm, "flush_test.db")
 	if err != nil {
 		t.Fatalf("Failed to initialize LogMgr: %v", err)
 	}
@@ -115,7 +119,7 @@ func TestFlush(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to read block after flush: %v", err)
 	}
-	recpos, err := logMgr.logPage.GetInt(0)
+	recpos, err := logMgr.logBuffer.GetContents().GetInt(0)
 	if err != nil {
 		t.Errorf("Error getting recpos %s", err)
 	}
@@ -139,8 +143,8 @@ func TestAppendBoundary(t *testing.T) {
 		fm.Close()
 		os.RemoveAll(tempDir)
 	}()
-
-	logMgr, err := NewLogMgr(fm, "boundary_test.db")
+	bm := buffer.NewBufferMgr(fm, 3)
+	logMgr, err := NewLogMgr(fm, bm, "boundary_test.db")
 	if err != nil {
 		t.Fatalf("Failed to initialize LogMgr: %v", err)
 	}
@@ -172,23 +176,21 @@ func TestLogMgr(t *testing.T) {
 		os.RemoveAll(tempDir)
 	}()
 
+	bm := buffer.NewBufferMgr(fm, 3)
 	// Test file creation and appending
 	filename := "test.db"
 	_, err = fm.Append(filename)
 	if err != nil {
 		t.Fatalf("Failed to append block: %v", err)
 	}
-	lm, _ := NewLogMgr(fm, filename)
+	lm, _ := NewLogMgr(fm, bm, filename)
 
 	createRecords(t, lm, 1, 3)
 	printLogRecords(t, lm, "The log file now has these records:")
 
 	// Create and append additional records
 	createRecords(t, lm, 4, 7)
-	err = lm.FlushLSN(5)
-	if err != nil {
-		return
-	}
+	err = lm.logBuffer.FlushLSN(5)
 	if err != nil {
 		return
 	}
@@ -198,9 +200,9 @@ func TestLogMgr(t *testing.T) {
 func createRecords(t *testing.T, lm *LogMgr, start, end int) {
 	t.Logf("Creating records:")
 	for i := start; i <= end; i++ {
-		record := createLogRecord(fmt.Sprintf("record%d", i), i+100)
+		record := createLogRecord(fmt.Sprintf("record %d", i), i+100)
 		lsn, _ := lm.Append(record)
-		t.Logf("Record LSN: %d", lsn)
+		t.Logf("Record LSN: %d,i is %d", lsn, i+100)
 	}
 }
 

@@ -342,8 +342,8 @@ func TestLengthLocked(t *testing.T) {
 				isNew:       false,
 			}
 
-			// Call lengthLocked
-			numBlocks, err := fm.lengthLocked(tc.name + ".dat")
+			// Call LengthLocked
+			numBlocks, err := fm.LengthLocked(tc.name + ".dat")
 
 			// Check for unexpected errors
 			if tc.expectedError && err == nil {
