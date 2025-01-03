@@ -14,6 +14,7 @@ type Page struct {
 	pageId       uint64
 	mu           sync.RWMutex
 	IsCompressed bool
+	isDirty      bool
 }
 
 const (
@@ -52,6 +53,7 @@ func (p *Page) SetInt(offset int, val int) error {
 		return fmt.Errorf("%s: setting int", ErrOutOfBounds)
 	}
 	binary.BigEndian.PutUint32(p.data[offset:], uint32(val))
+	p.SetIsDirty(true)
 	return nil
 }
 
@@ -110,6 +112,7 @@ func (p *Page) SetBytes(offset int, val []byte) error {
 		copy(p.data[offset:], val)
 
 		p.data[offset+length] = 0
+		p.SetIsDirty(true)
 	}
 
 	return nil
@@ -154,6 +157,7 @@ func (p *Page) SetString(offset int, val string) error {
 	strBytes := append([]byte(val))
 
 	p.SetBytes(offset, strBytes)
+	p.SetIsDirty(true)
 	return nil
 }
 
@@ -168,6 +172,7 @@ func (p *Page) SetBool(offset int, val bool) error {
 	} else {
 		p.data[offset] = 0
 	}
+	p.SetIsDirty(true)
 	return nil
 }
 
@@ -191,6 +196,7 @@ func (p *Page) SetDate(offset int, val time.Time) error {
 	}
 	convertedVal := uint64(val.Unix())
 	binary.BigEndian.PutUint64(p.data[offset:], convertedVal)
+	p.SetIsDirty(true)
 	return nil
 }
 
@@ -202,6 +208,14 @@ func (p *Page) GetDate(offset int) (time.Time, error) {
 	}
 	timestamp := binary.BigEndian.Uint64(p.data[offset:])
 	return time.Unix(int64(timestamp), 0), nil
+}
+
+func (p *Page) SetIsDirty(dirt bool) {
+	p.isDirty = dirt
+}
+
+func (p *Page) GetIsDirty() bool {
+	return p.isDirty
 }
 
 func (p *Page) Contents() []byte {
