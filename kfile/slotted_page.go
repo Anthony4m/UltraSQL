@@ -16,7 +16,7 @@ type SlottedPage struct {
 
 const (
 	PageHeaderSize  = 24   // Fixed header size
-	DefaultPageSize = 4096 // 4KB default page size
+	DefaultPageSize = 8196 // 4KB default page size
 )
 
 func NewSlottedPage(pageSize int) *SlottedPage {
@@ -53,7 +53,7 @@ func (sp *SlottedPage) InsertCell(cell *Cell) error {
 	}
 
 	// Calculate new cell offset (from end of page)
-	newOffset := sp.freeSpace - cellSize
+	newOffset := (sp.freeSpace - cellSize) - 4
 
 	// Write cell data
 	err := sp.SetBytes(newOffset, cellBytes)

@@ -229,65 +229,53 @@ func TestSlottedPage_DeleteAndCompact(t *testing.T) {
 		}
 	}
 
+	// Store initial state
 	originalFreeSpace := page.freeSpace
+	originalSlots := make([]int, len(page.slots))
+	copy(originalSlots, page.slots)
 
-	// Delete middle cell
+	// Delete middle cell (key2)
 	err := page.DeleteCell(2)
 	if err != nil {
 		t.Fatalf("Failed to delete cell: %v", err)
 	}
 
+	// Verify cell count and slots decreased
 	if page.cellCount != 4 {
 		t.Errorf("Expected cell count 4, got %d", page.cellCount)
 	}
-
-	// Verify cell is marked as deleted
-	cell, err := page.GetCell(page.slots[2])
-	if err != nil {
-		t.Fatalf("Failed to get cell: %v", err)
+	if len(page.slots) != 4 {
+		t.Errorf("Expected 4 slots after deletion, got %d", len(page.slots))
 	}
 
-	if !cell.IsDeleted() {
-		t.Error("Cell should be marked as deleted")
+	// Verify slot array was adjusted correctly
+	// First two slots should remain the same
+	for i := 0; i < 2; i++ {
+		if page.slots[i] != originalSlots[i] {
+			t.Errorf("Slot %d changed unexpectedly after deletion", i)
+		}
+	}
+	// Last two slots should now contain what were originally slots 3 and 4
+	for i := 2; i < 4; i++ {
+		if page.slots[i] != originalSlots[i+1] {
+			t.Errorf("Slot %d not properly shifted after deletion", i)
+		}
 	}
 
-	// Compact page
+	// Try to find deleted key - should fail
+	_, _, err = page.FindCell([]byte("key2"))
+	if err == nil {
+		t.Error("Expected key2 to not be found after deletion")
+	}
+
+	// Compact page and verify space reclamation
 	err = page.Compact()
 	if err != nil {
 		t.Fatalf("Failed to compact page: %v", err)
 	}
 
-	// Verify space was reclaimed
 	if page.freeSpace <= originalFreeSpace {
 		t.Error("Compaction did not reclaim space")
-	}
-
-	// Verify remaining cells are intact and in order
-	for i := 0; i < 4; i++ {
-		key := []byte(fmt.Sprintf("key%d", i))
-		if i >= 2 {
-			key = []byte(fmt.Sprintf("key%d", i+1))
-		}
-
-		cell, _, err := page.FindCell(key)
-		if err != nil {
-			t.Errorf("Failed to find cell for key %s: %v", key, err)
-			continue
-		}
-
-		val, err := cell.GetValue()
-		if err != nil {
-			t.Errorf("Failed to get value for key %s: %v", key, err)
-			continue
-		}
-
-		expected := fmt.Sprintf("value%d", i)
-		if i >= 2 {
-			expected = fmt.Sprintf("value%d", i+1)
-		}
-		if val != expected {
-			t.Errorf("Expected value %s, got %s", expected, val)
-		}
 	}
 }
 

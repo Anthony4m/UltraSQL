@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"sync"
 	"time"
-	"unsafe"
 )
 
 type Page struct {
@@ -58,41 +57,45 @@ func (p *Page) SetInt(offset int, val int) error {
 }
 
 func (p *Page) GetBytes(offset int) ([]byte, error) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	p.mu.RLock()
+	defer p.mu.RUnlock()
 
-	if offset > len(p.data) {
+	if offset >= len(p.data) {
 		return nil, fmt.Errorf("%s: getting bytes", ErrOutOfBounds)
 	}
 
-	end := offset
-	for end < len(p.data) && p.data[end] != 0 {
-		end++
+	// Read length prefix (4 bytes)
+	length := int(binary.BigEndian.Uint32(p.data[offset : offset+4]))
+	if offset+4+length > len(p.data) {
+		return nil, fmt.Errorf("%s: invalid length", ErrOutOfBounds)
 	}
 
-	dataCopy := make([]byte, end-offset)
-	copy(dataCopy, p.data[offset:end])
+	// Copy data to prevent modification of internal state
+	result := make([]byte, length)
+	copy(result, p.data[offset+4:offset+4+length])
 
-	return dataCopy, nil
+	return result, nil
 }
 
 func (p *Page) GetBytesWithLen(offset int) ([]byte, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	if offset > len(p.data) {
+	if offset >= len(p.data) {
 		return nil, fmt.Errorf("%s: getting bytes", ErrOutOfBounds)
 	}
 
-	end := offset
-	for end < len(p.data) && p.data[end] != 0 {
-		end++
+	// Read length prefix (4 bytes)
+	length := int(binary.BigEndian.Uint32(p.data[offset : offset+4]))
+	if offset+4+length > len(p.data) {
+		return nil, fmt.Errorf("%s: invalid length", ErrOutOfBounds)
 	}
 
-	dataCopy := make([]byte, end+int(unsafe.Sizeof(0))-offset)
-	copy(dataCopy, p.data[offset:end+int(unsafe.Sizeof(0))])
+	// Copy data to prevent modification of internal state
+	result := make([]byte, length)
+	copy(result, p.data[offset+4:offset+4+length])
 
-	return dataCopy, nil
+	return result, nil
 }
 
 func (p *Page) SetBytes(offset int, val []byte) error {
@@ -100,21 +103,19 @@ func (p *Page) SetBytes(offset int, val []byte) error {
 	defer p.mu.Unlock()
 
 	length := len(val)
-	if length != 0 {
-		if offset+length+1 > len(p.data) {
-			return fmt.Errorf("%s: setting bytes", ErrOutOfBounds)
-		}
+	totalSize := 4 + length // length prefix + data
 
-		for i := 0; i < length+1; i++ {
-			p.data[offset+i] = 0
-		}
-
-		copy(p.data[offset:], val)
-
-		p.data[offset+length] = 0
-		p.SetIsDirty(true)
+	if offset+totalSize > len(p.data) {
+		return fmt.Errorf("%s: setting bytes", ErrOutOfBounds)
 	}
 
+	// Write length prefix
+	binary.BigEndian.PutUint32(p.data[offset:], uint32(length))
+
+	// Write data
+	copy(p.data[offset+4:], val)
+
+	p.SetIsDirty(true)
 	return nil
 }
 
