@@ -32,11 +32,13 @@ func NewSlottedPage(pageSize int) *SlottedPage {
 	}
 
 	// Initialize header
-	sp.SetInt(0, pageSize)       // Page size
-	sp.SetInt(4, PageHeaderSize) // Header size
-	sp.SetInt(8, 0)              // Cell count
-	sp.SetInt(12, pageSize)      // Free space pointer
-
+	err := sp.SetInt(0, pageSize)      // Page size
+	err = sp.SetInt(4, PageHeaderSize) // Header size
+	err = sp.SetInt(8, 0)              // Cell count
+	err = sp.SetInt(12, pageSize)      // Free space pointer
+	if err != nil {
+		return nil
+	}
 	return sp
 }
 
@@ -70,8 +72,11 @@ func (sp *SlottedPage) InsertCell(cell *Cell) error {
 	// Update header
 	sp.cellCount++
 	sp.freeSpace = newOffset
-	sp.SetInt(8, sp.cellCount)
-	sp.SetInt(12, sp.freeSpace)
+	err = sp.SetInt(8, sp.cellCount)
+	err = sp.SetInt(12, sp.freeSpace)
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
