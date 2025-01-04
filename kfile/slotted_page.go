@@ -145,8 +145,10 @@ func (sp *SlottedPage) DeleteCell(slot int) error {
 	// Remove slot
 	sp.slots = append(sp.slots[:slot], sp.slots[slot+1:]...)
 	sp.cellCount--
-	sp.SetInt(8, sp.cellCount)
-
+	err = sp.SetInt(8, sp.cellCount)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
