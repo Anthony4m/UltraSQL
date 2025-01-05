@@ -174,7 +174,10 @@ func (c *Cell) ToBytes() []byte {
 	if c.flags == KV_CELL {
 		buf.Write(c.value)
 	} else {
-		binary.Write(buf, binary.BigEndian, c.pageId)
+		err := binary.Write(buf, binary.BigEndian, c.pageId)
+		if err != nil {
+			return nil
+		}
 	}
 
 	return buf.Bytes()

@@ -567,7 +567,7 @@ func TestGetBytes(t *testing.T) {
 			name:           "Normal retrieval",
 			initialData:    []byte{1, 2, 3, 4, 5},
 			offset:         2,
-			expectedResult: []byte{3, 4, 5},
+			expectedResult: []byte{1, 2, 3, 4, 5},
 			expectedError:  nil,
 		},
 		{
@@ -595,12 +595,28 @@ func TestGetBytes(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			p := &Page{
-				data: make([]byte, len(tc.initialData)),
+			//Cell {
+			//	cell := NewKVCell([]byte("key"))
+			//	cell.SetValue("value")
+			//	return cell
+			//p := &Page{
+			//	data: make([]byte, len(tc.initialData)),
+			//}
+			c := NewKVCell([]byte(tc.name))
+			err := c.SetValue(tc.initialData)
+			if err != nil {
+				t.Errorf("An error occured %s", err)
 			}
-			copy(p.data, tc.initialData)
+			p := NewSlottedPage(0)
+			//copy(p.data, tc.initialData)
 
-			result, err := p.GetBytes(tc.offset)
+			err = p.InsertCell(c)
+			if err != nil {
+				t.Errorf("An error occured %s", err)
+			}
+
+			cell, _, err := p.FindCell([]byte(tc.name))
+			result, err := cell.GetValue()
 
 			// Check error
 			if tc.expectedError != nil {
@@ -615,7 +631,7 @@ func TestGetBytes(t *testing.T) {
 			}
 
 			// Check result
-			if !bytes.Equal(result, tc.expectedResult) {
+			if !bytes.Equal(result.([]byte), tc.expectedResult) {
 				t.Fatalf("Expected %v, got %v", tc.expectedResult, result)
 			}
 

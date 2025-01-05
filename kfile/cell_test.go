@@ -99,7 +99,10 @@ func TestCell_Serialization(t *testing.T) {
 			name: "KV Cell with String",
 			setup: func() *Cell {
 				cell := NewKVCell([]byte("key"))
-				cell.SetValue("value")
+				err := cell.SetValue("value")
+				if err != nil {
+					t.Errorf("an error occured %s", err)
+				}
 				return cell
 			},
 		},
@@ -107,7 +110,10 @@ func TestCell_Serialization(t *testing.T) {
 			name: "KV Cell with Integer",
 			setup: func() *Cell {
 				cell := NewKVCell([]byte("key"))
-				cell.SetValue(42)
+				err := cell.SetValue(42)
+				if err != nil {
+					t.Errorf("an error occured %s", err)
+				}
 				return cell
 			},
 		},
@@ -172,9 +178,12 @@ func TestSlottedPage_InsertCell(t *testing.T) {
 	// Insert cells with increasing keys
 	for i := 0; i < 10; i++ {
 		cell := NewKVCell([]byte(fmt.Sprintf("key%d", i)))
-		cell.SetValue(fmt.Sprintf("value%d", i))
+		err := cell.SetValue(fmt.Sprintf("value%d", i))
+		if err != nil {
+			t.Errorf("an error occurred %s", err)
+		}
 
-		err := page.InsertCell(cell)
+		err = page.InsertCell(cell)
 		if err != nil {
 			t.Fatalf("Failed to insert cell %d: %v", i, err)
 		}
@@ -306,7 +315,10 @@ func TestSlottedPage_SpaceManagement(t *testing.T) {
 
 	// Verify we can't insert any more cells
 	cell := NewKVCell([]byte("final"))
-	cell.SetValue("value")
+	err = cell.SetValue("value")
+	if err != nil {
+		t.Errorf("an error occured %s", err)
+	}
 	err = page.InsertCell(cell)
 	if err == nil {
 		t.Error("Expected error when inserting into full page")
