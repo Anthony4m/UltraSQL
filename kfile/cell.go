@@ -56,7 +56,7 @@ func NewKVCell(key []byte) *Cell {
 }
 
 // SetValue Set the value for a KV cell
-func (c *Cell) SetValue(val interface{}) error {
+func (c *Cell) SetValue(val any) error {
 	if c.flags != KV_CELL {
 		return fmt.Errorf("cannot set value on key-only cell")
 	}
@@ -102,7 +102,7 @@ func (c *Cell) SetValue(val interface{}) error {
 }
 
 // GetValue Get the value from a KV cell
-func (c *Cell) GetValue() (interface{}, error) {
+func (c *Cell) GetValue() (any, error) {
 	if c.flags != KV_CELL {
 		return nil, fmt.Errorf("cannot get value from key-only cell")
 	}
