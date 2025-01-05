@@ -40,7 +40,6 @@ func NewLogMgr(fm *kfile.FileMgr, bm *buffer.BufferMgr, logFile string) (*LogMgr
 		bm:      bm,
 		logFile: logFile,
 	}
-
 	var err error
 	if logMgr.logsize, err = fm.Length(logFile); err != nil {
 		return nil, &Error{Op: "new", Err: fmt.Errorf("failed to get log file length: %v", err)}
