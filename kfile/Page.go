@@ -157,7 +157,10 @@ func (p *Page) GetStringWithOffset(offset int) (string, error) {
 func (p *Page) SetString(offset int, val string) error {
 	strBytes := append([]byte(val))
 
-	p.SetBytes(offset, strBytes)
+	err := p.SetBytes(offset, strBytes)
+	if err != nil {
+		return err
+	}
 	p.SetIsDirty(true)
 	return nil
 }
