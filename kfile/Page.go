@@ -227,6 +227,21 @@ func (p *Page) SetContents(data []byte) {
 	p.data = data
 }
 
+func (p *Page) Size() int {
+	return len(p.data)
+}
+
+func (p *Page) Available() int {
+	return len(p.data) - p.GetUsedSpace()
+}
+
+func (p *Page) GetUsedSpace() int {
+	//TODO:
+	// This should be implemented based on page type
+	// For slotted pages, it would include header + slots + cells
+	return 0
+}
+
 func trimZero(s []byte) []byte {
 	for i := len(s) - 1; i >= 0; i-- {
 		if s[i] != 0 {
