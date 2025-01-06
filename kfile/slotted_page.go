@@ -52,6 +52,10 @@ func (sp *SlottedPage) InsertCell(cell *Cell) error {
 		return fmt.Errorf("page full")
 	}
 
+	if !cell.FitsInPage(sp.freeSpace) {
+		return fmt.Errorf("cell too large full")
+	}
+
 	// Calculate new cell offset (from end of page)
 	newOffset := (sp.freeSpace - cellSize) - 4
 
