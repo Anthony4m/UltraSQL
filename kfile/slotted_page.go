@@ -42,6 +42,11 @@ func NewSlottedPage(pageSize int) *SlottedPage {
 	return sp
 }
 
+// GetFreeSpace return the free space offset
+func (sp *SlottedPage) GetFreeSpace() int {
+	return sp.freeSpace
+}
+
 // InsertCell Insert a cell into the page
 func (sp *SlottedPage) InsertCell(cell *Cell) error {
 	cellBytes := cell.ToBytes()

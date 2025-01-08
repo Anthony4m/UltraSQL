@@ -37,8 +37,8 @@ func NewPageFromBytes(b []byte) *Page {
 }
 
 func (p *Page) GetInt(offset int) (int, error) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	p.mu.RLock()
+	defer p.mu.RUnlock()
 	if offset > len(p.data) {
 		return 0, fmt.Errorf("%s: getting int", ErrOutOfBounds)
 	}
@@ -46,8 +46,8 @@ func (p *Page) GetInt(offset int) (int, error) {
 }
 
 func (p *Page) SetInt(offset int, val int) error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	p.mu.RLock()
+	defer p.mu.RUnlock()
 	if offset+4 > len(p.data) {
 		return fmt.Errorf("%s: setting int", ErrOutOfBounds)
 	}
@@ -78,8 +78,8 @@ func (p *Page) GetBytes(offset int) ([]byte, error) {
 }
 
 func (p *Page) GetBytesWithLen(offset int) ([]byte, error) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	p.mu.RLock()
+	defer p.mu.RUnlock()
 
 	if offset >= len(p.data) {
 		return nil, fmt.Errorf("%s: getting bytes", ErrOutOfBounds)
@@ -99,8 +99,8 @@ func (p *Page) GetBytesWithLen(offset int) ([]byte, error) {
 }
 
 func (p *Page) SetBytes(offset int, val []byte) error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	p.mu.RLock()
+	defer p.mu.RUnlock()
 
 	length := len(val)
 	totalSize := 4 + length // length prefix + data
@@ -166,8 +166,8 @@ func (p *Page) SetString(offset int, val string) error {
 }
 
 func (p *Page) SetBool(offset int, val bool) error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	p.mu.RLock()
+	defer p.mu.RUnlock()
 	if offset+1 > len(p.data) {
 		return fmt.Errorf("%s: setting bool", ErrOutOfBounds)
 	}
@@ -181,8 +181,8 @@ func (p *Page) SetBool(offset int, val bool) error {
 }
 
 func (p *Page) GetBool(offset int) (bool, error) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	p.mu.RLock()
+	defer p.mu.RUnlock()
 	if offset+1 > len(p.data) {
 		return false, fmt.Errorf("%s: getting bool", ErrOutOfBounds)
 	}
@@ -193,8 +193,8 @@ func (p *Page) GetBool(offset int) (bool, error) {
 }
 
 func (p *Page) SetDate(offset int, val time.Time) error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	p.mu.RLock()
+	defer p.mu.RUnlock()
 	if offset+8 > len(p.data) {
 		return fmt.Errorf("%s: setting date", ErrOutOfBounds)
 	}
@@ -205,8 +205,8 @@ func (p *Page) SetDate(offset int, val time.Time) error {
 }
 
 func (p *Page) GetDate(offset int) (time.Time, error) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	p.mu.RLock()
+	defer p.mu.RUnlock()
 	if offset+8 > len(p.data) {
 		return time.Unix(0, 0), fmt.Errorf("%s: getting date", ErrOutOfBounds)
 	}

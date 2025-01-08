@@ -10,7 +10,7 @@ import (
 
 type Buffer struct {
 	fm             *kfile.FileMgr
-	contents       *kfile.Page
+	contents       *kfile.SlottedPage
 	blk            *kfile.BlockId
 	pins           int
 	txnum          int
@@ -27,7 +27,7 @@ const (
 func NewBuffer(fm *kfile.FileMgr) *Buffer {
 	return &Buffer{
 		fm:       fm,
-		contents: kfile.NewPage(fm.BlockSize()),
+		contents: kfile.NewSlottedPage(fm.BlockSize()),
 		blk:      nil,
 		pins:     0,
 		txnum:    -1,
@@ -35,10 +35,10 @@ func NewBuffer(fm *kfile.FileMgr) *Buffer {
 	}
 }
 
-func (b *Buffer) GetContents() *kfile.Page {
+func (b *Buffer) GetContents() *kfile.SlottedPage {
 	return b.contents
 }
-func (b *Buffer) SetContents(p *kfile.Page) {
+func (b *Buffer) SetContents(p *kfile.SlottedPage) {
 	b.contents = p
 }
 
@@ -67,7 +67,7 @@ func (b *Buffer) assignToBlock(block *kfile.BlockId) error {
 		return err
 	}
 	b.blk = block
-	if err := b.fm.Read(b.blk, b.contents); err != nil {
+	if err := b.fm.Read(b.blk, b.contents.Page); err != nil {
 		return err
 	}
 	b.pins = 0
@@ -76,7 +76,7 @@ func (b *Buffer) assignToBlock(block *kfile.BlockId) error {
 
 func (b *Buffer) Flush() error {
 	if b.txnum > 0 && b.blk != nil {
-		if err := b.fm.Write(b.blk, b.contents); err != nil {
+		if err := b.fm.Write(b.blk, b.contents.Page); err != nil {
 			return err
 		}
 		b.txnum = -1
@@ -152,7 +152,7 @@ func (b *Buffer) FlushLSN(lsn int) error {
 
 func (b *Buffer) LogFlush(blk *kfile.BlockId) error {
 	b.blk = blk
-	if err := b.fm.Write(b.blk, b.contents); err != nil {
+	if err := b.fm.Write(b.blk, b.contents.Page); err != nil {
 		return err
 	}
 	return nil
