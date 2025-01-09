@@ -157,7 +157,7 @@ func (fm *FileMgr) getFile(filename string) (*os.File, error) {
 	return f, nil
 }
 
-func (fm *FileMgr) Read(blk *BlockId, p *Page) error {
+func (fm *FileMgr) Read(blk *BlockId, p *SlottedPage) error {
 	fm.mutex.RLock()
 	defer fm.mutex.RUnlock()
 	f, err := fm.getFile(blk.GetFileName())
@@ -188,7 +188,7 @@ func (fm *FileMgr) Read(blk *BlockId, p *Page) error {
 
 	return nil
 }
-func (fm *FileMgr) Write(blk *BlockId, p *Page) error {
+func (fm *FileMgr) Write(blk *BlockId, p *SlottedPage) error {
 
 	fm.mutex.Lock()
 	defer fm.mutex.Unlock()
