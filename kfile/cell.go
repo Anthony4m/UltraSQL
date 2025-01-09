@@ -25,15 +25,15 @@ const (
 )
 
 type Cell struct {
-	flags     byte   // Cell metadata flags
-	keySize   int    // Size of key in bytes
-	valueSize int    // Size of value/record in bytes
-	keyType   byte   // Type of key data
-	valueType byte   // Type of value data
-	key       []byte // Key bytes
-	value     []byte // Value/record bytes
-	pageId    uint64 // For internal nodes - points to child page
-	offset    int    // Physical offset in page
+	key       []byte
+	value     []byte
+	keySize   int
+	valueSize int
+	pageId    uint64
+	offset    int
+	flags     byte
+	keyType   byte
+	valueType byte
 }
 
 // NewKeyCell new key-only cell (internal node)
