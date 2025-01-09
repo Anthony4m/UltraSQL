@@ -210,3 +210,7 @@ func (sp *SlottedPage) Compact() error {
 
 	return nil
 }
+
+func (sp *SlottedPage) GetAllSlots() []int {
+	return sp.slots
+}
