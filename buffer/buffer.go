@@ -67,7 +67,7 @@ func (b *Buffer) assignToBlock(block *kfile.BlockId) error {
 		return err
 	}
 	b.blk = block
-	if err := b.fm.Read(b.blk, b.contents.Page); err != nil {
+	if err := b.fm.Read(b.blk, b.contents); err != nil {
 		return err
 	}
 	b.pins = 0
@@ -76,7 +76,7 @@ func (b *Buffer) assignToBlock(block *kfile.BlockId) error {
 
 func (b *Buffer) Flush() error {
 	if b.txnum > 0 && b.blk != nil {
-		if err := b.fm.Write(b.blk, b.contents.Page); err != nil {
+		if err := b.fm.Write(b.blk, b.contents); err != nil {
 			return err
 		}
 		b.txnum = -1
@@ -152,7 +152,7 @@ func (b *Buffer) FlushLSN(lsn int) error {
 
 func (b *Buffer) LogFlush(blk *kfile.BlockId) error {
 	b.blk = blk
-	if err := b.fm.Write(b.blk, b.contents.Page); err != nil {
+	if err := b.fm.Write(b.blk, b.contents); err != nil {
 		return err
 	}
 	return nil
