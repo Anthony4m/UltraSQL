@@ -53,6 +53,10 @@ func (sp *SlottedPage) InsertCell(cell *Cell) error {
 	cellSize := len(cellBytes)
 
 	// Check if we have enough space
+	if sp.freeSpace-sp.headerSize < cellSize {
+		return fmt.Errorf("page full")
+	}
+
 	if !cell.FitsInPage(sp.freeSpace) {
 		return fmt.Errorf("cell too large full")
 	}

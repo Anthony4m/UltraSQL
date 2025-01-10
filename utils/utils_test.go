@@ -32,8 +32,7 @@ func createTempFileMgr(t *testing.T) *kfile.FileMgr {
 // Helper function to prepare a log block with test records
 func prepareLogBlock(t *testing.T, fm *kfile.FileMgr, filename string, records [][]byte) *kfile.BlockId {
 	blk := kfile.NewBlockId(filename, 0)
-	pgsize := make([]byte, fm.BlockSize())
-	page := kfile.NewPageFromBytes(pgsize)
+	page := kfile.NewSlottedPage(fm.BlockSize())
 
 	// Start with boundary at the start of the page
 	page.SetInt(0, 4) // 4 is size of int32 boundary

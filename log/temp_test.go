@@ -52,8 +52,8 @@ func verifyMultipleRecordsInSingleBlock(t *testing.T, lm *LogMgr, blockSize int)
 	record1 := record("record2", 200)
 	record2 := record("record1", 100)
 
-	lsn1, err := lm.Append(record1)
-	lsn2, err := lm.Append(record2)
+	lsn1, _, err := lm.Append(record1)
+	lsn2, _, err := lm.Append(record2)
 	if err != nil {
 		t.Errorf("Error occured %s", err)
 	}
@@ -119,14 +119,22 @@ func readAllRecords(t *testing.T, iter utils.Iterator[[]byte]) []string {
 			t.Fatalf("Error reading record: %v", err)
 		}
 
-		page := kfile.NewPageFromBytes(rec)
-		s, err := page.GetString(0)
+		//page := kfile.NewPageFromBytes(rec)
+		//s, err := page.GetString(0)
+		s, err := rec.GetValue()
 		if err != nil {
-			t.Fatalf("Error getting string: %v", err)
+			panic(err)
+		}
+		s, ok := s.(string)
+		if ok {
+			fmt.Println("Converted to string:", s)
+		} else {
+			fmt.Println("Value is not a string")
 		}
 
-		npos := utils.MaxLength(len(s)) // Ensure alignment
-		n, err := page.GetInt(npos)
+		//npos := utils.MaxLength(len(s)) // Ensure alignment
+		//n, err := page.GetInt(npos)
+		n := rec.GetKey()
 		if err != nil {
 			t.Fatalf("Error getting int: %v", err)
 		}

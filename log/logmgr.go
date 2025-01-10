@@ -2,6 +2,7 @@ package log
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"sync"
 	"ultraSQL/buffer"
@@ -109,19 +110,39 @@ func (lm *LogMgr) appendNewBlock() (*kfile.BlockId, error) {
 	return blk, nil
 }
 
-func (lm *LogMgr) Append(logrec []byte) (int, error) {
+func (lm *LogMgr) Append(logrec []byte) (int, []byte, error) {
 	if len(logrec) == 0 {
-		return 0, &Error{Op: "append", Err: fmt.Errorf("empty log record")}
+		return 0, nil, &Error{Op: "append", Err: fmt.Errorf("empty log record")}
 	}
 
 	lm.mu.Lock()
 	defer lm.mu.Unlock()
-	cellKey := lm.latestLSN
-	key_bytes := []byte(cellKey)
+	cellKey := lm.GenerateKey()
 	//create a new key value cell and pass in the key
-	cell := kfile.NewKVCell(key_bytes)
+	cell := kfile.NewKVCell(cellKey)
+	err := cell.SetValue(logrec)
+	if err != nil {
+		return 0, nil, err
+	}
 	// append the cell to the slotted page
+	logpage := lm.logBuffer.GetContents()
+	err = logpage.InsertCell(cell)
+	if err != nil {
+		if err.Error() == "cell too large full" {
+			if err := lm.Flush(); err != nil {
+				return 0, nil, &Error{Op: "append", Err: fmt.Errorf("failed to flush: %v", err)}
+			}
 
+			if lm.currentBlock, _ = lm.appendNewBlock(); lm.currentBlock == nil {
+				return 0, nil, &Error{Op: "append", Err: fmt.Errorf("failed to append new block")}
+			}
+		} else {
+			return 0, nil, &Error{Op: "Append", Err: fmt.Errorf("failed to insert cell %s", err)}
+		}
+
+	}
+
+	lm.logBuffer.SetContents(logpage)
 	//logPage := lm.bm.Get(lm.currentBlock).GetContents()
 
 	//boundary := logPage.GetFreeSpace()
@@ -160,7 +181,7 @@ func (lm *LogMgr) Append(logrec []byte) (int, error) {
 
 	lm.latestLSN++
 	lm.logBuffer.MarkModified(-1, lm.latestLSN)
-	return lm.latestLSN, nil
+	return lm.latestLSN, cellKey, nil
 }
 
 func (lm *LogMgr) Checkpoint() error {
@@ -172,4 +193,24 @@ func (lm *LogMgr) Checkpoint() error {
 	}
 
 	return nil
+}
+
+func (lm *LogMgr) GenerateKey() []byte {
+	prefix := "log_"
+	var lsnBytes [8]byte
+	binary.BigEndian.PutUint64(lsnBytes[:], uint64(lm.latestLSN+1))
+
+	var keyBuffer bytes.Buffer
+
+	keyBuffer.WriteString(prefix)
+	keyBuffer.Write(lsnBytes[:])
+	return keyBuffer.Bytes()
+}
+
+func (lm *LogMgr) ValidateKey(key []byte) bool {
+	generatedKey := lm.GenerateKey()
+	if comp := bytes.Compare(key, generatedKey); comp == 1 {
+		return false
+	}
+	return true
 }

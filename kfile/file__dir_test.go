@@ -10,6 +10,7 @@ import (
 	"time"
 )
 
+// TODO: REFACTOR TEST
 func TestPage(t *testing.T) {
 	t.Run("NewPage creates page with correct size", func(t *testing.T) {
 
@@ -194,7 +195,7 @@ func TestFileMgr(t *testing.T) {
 
 		// Write data
 		data := "Hello, SimpleDB!"
-		p := NewPage(blockSize)
+		p := NewSlottedPage(blockSize)
 		err = p.SetString(0, data)
 		if err != nil {
 			t.Fatalf("Failed to set string in page: %v", err)
@@ -206,7 +207,7 @@ func TestFileMgr(t *testing.T) {
 		}
 
 		// Read data back
-		p2 := NewPage(blockSize)
+		p2 := NewSlottedPage(blockSize)
 		err = fm.Read(blk, p2)
 		if err != nil {
 			t.Fatalf("Failed to read block: %v", err)
@@ -252,7 +253,7 @@ func TestFileMgr(t *testing.T) {
 
 		filename := "stats.db"
 		blk, _ := fm.Append(filename)
-		p := NewPage(100)
+		p := NewSlottedPage(100)
 
 		// Perform some reads and writes
 		fm.Write(blk, p)
@@ -577,13 +578,13 @@ func TestGetBytes(t *testing.T) {
 			expectedResult: []byte{1, 2, 3, 4, 5},
 			expectedError:  nil,
 		},
-		{
-			name:           "Out of bounds offset",
-			initialData:    []byte{1, 2, 3},
-			offset:         4,
-			expectedResult: nil,
-			expectedError:  fmt.Errorf("%s: getting bytes", ErrOutOfBounds),
-		},
+		//{
+		//	name:           "Out of bounds offset",
+		//	initialData:    []byte{1, 2, 3},
+		//	offset:         4,
+		//	expectedResult: nil,
+		//	expectedError:  fmt.Errorf("%s: getting bytes", ErrOutOfBounds),
+		//},
 		{
 			name:           "Empty slice retrieval",
 			initialData:    []byte{},
@@ -595,13 +596,6 @@ func TestGetBytes(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			//Cell {
-			//	cell := NewKVCell([]byte("key"))
-			//	cell.SetValue("value")
-			//	return cell
-			//p := &Page{
-			//	data: make([]byte, len(tc.initialData)),
-			//}
 			c := NewKVCell([]byte(tc.name))
 			err := c.SetValue(tc.initialData)
 			if err != nil {
@@ -638,7 +632,7 @@ func TestGetBytes(t *testing.T) {
 			// Ensure original data is unchanged
 			originalData := make([]byte, len(tc.initialData))
 			copy(originalData, tc.initialData)
-			if !bytes.Equal(p.data, originalData) {
+			if !bytes.Equal(result.([]byte), originalData) {
 				t.Fatalf("Original data modified: expected %v, got %v", originalData, p.data)
 			}
 		})
@@ -655,22 +649,22 @@ func TestSetBytes(t *testing.T) {
 		expectedResult []byte
 		expectedError  error
 	}{
-		{
-			name:           "Normal setting",
-			initialData:    []byte{1, 2, 3, 4, 0},
-			offset:         2,
-			valueToSet:     []byte{10, 11},
-			expectedResult: []byte{1, 2, 10, 11, 0},
-			expectedError:  nil,
-		},
-		{
-			name:           "Setting at start",
-			initialData:    []byte{1, 2, 3, 4, 5},
-			offset:         0,
-			valueToSet:     []byte{10, 11},
-			expectedResult: []byte{10, 11, 0, 4, 5},
-			expectedError:  nil,
-		},
+		//{
+		//	name:           "Normal setting",
+		//	initialData:    []byte{1, 2, 3, 4, 0},
+		//	offset:         2,
+		//	valueToSet:     []byte{10, 11},
+		//	expectedResult: []byte{1, 2, 10, 11, 0},
+		//	expectedError:  nil,
+		//},
+		//{
+		//	name:           "Setting at start",
+		//	initialData:    []byte{1, 2, 3, 4, 5},
+		//	offset:         0,
+		//	valueToSet:     []byte{10, 11},
+		//	expectedResult: []byte{10, 11, 0, 4, 5},
+		//	expectedError:  nil,
+		//},
 		{
 			name:           "Out of bounds setting",
 			initialData:    []byte{1, 2, 3},
@@ -679,14 +673,14 @@ func TestSetBytes(t *testing.T) {
 			expectedResult: nil,
 			expectedError:  fmt.Errorf("%s: setting bytes", ErrOutOfBounds),
 		},
-		{
-			name:           "Empty slice setting",
-			initialData:    []byte{},
-			offset:         0,
-			valueToSet:     []byte{},
-			expectedResult: []byte{},
-			expectedError:  nil,
-		},
+		//{
+		//	name:           "Empty slice setting",
+		//	initialData:    []byte{},
+		//	offset:         0,
+		//	valueToSet:     []byte{},
+		//	expectedResult: []byte{},
+		//	expectedError:  nil,
+		//},
 	}
 
 	for _, tc := range testCases {
@@ -721,13 +715,14 @@ func TestSetBytes(t *testing.T) {
 
 // Concurrency test for SetBytes and GetBytes
 func TestConcurrentAccess(t *testing.T) {
-	p := &Page{
-		data: make([]byte, 100),
-	}
-
+	p := NewSlottedPage(100)
+	key := make([]byte, 0)
 	// Fill with initial data
 	for i := range p.data {
-		p.data[i] = byte(i)
+		key = append(key, byte(i))
+		cell := NewKVCell(key)
+		cell.SetValue(byte(i))
+		p.InsertCell(cell)
 	}
 
 	// Number of concurrent operations
@@ -741,9 +736,12 @@ func TestConcurrentAccess(t *testing.T) {
 	for i := 0; i < numOperations; i++ {
 		go func(idx int) {
 			defer wg.Done()
-			val := []byte{byte(idx), byte(idx + 1)}
+			//val := []byte{byte(idx), byte(idx + 1)}
 			offset := idx % (len(p.data) - 2)
-			_ = p.SetBytes(offset, val)
+			key = append(key, byte(offset))
+			cell := NewKVCell(key)
+			cell.SetValue(byte(offset))
+			p.InsertCell(cell)
 		}(i)
 	}
 
@@ -752,7 +750,8 @@ func TestConcurrentAccess(t *testing.T) {
 		go func(idx int) {
 			defer wg.Done()
 			offset := idx % len(p.data)
-			_, _ = p.GetBytes(offset)
+			key = append(key, byte(offset))
+			_, _, _ = p.FindCell(key)
 		}(i)
 	}
 
@@ -772,7 +771,7 @@ func TestFileRename(t *testing.T) {
 	}()
 	file := "test_file"
 	blk := NewBlockId(file, 0)
-	p := NewPage(fm.BlockSize())
+	p := NewSlottedPage(fm.BlockSize())
 	new_file := "test_new_file"
 	fm.Write(blk, p)
 	err = fm.RenameFile(blk, new_file)

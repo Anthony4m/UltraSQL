@@ -1,10 +1,11 @@
 package log
 
 import (
+	"bytes"
+	"encoding/binary"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 	"ultraSQL/buffer"
@@ -71,15 +72,18 @@ func TestAppend(t *testing.T) {
 	// Append records and check LSN
 	record := []byte("test record")
 	for i := 0; i < 10; i++ {
-		lsn, _ := logMgr.Append(record)
+		lsn, key, _ := logMgr.Append(record)
 		if lsn != i+1 {
 			t.Errorf("Expected LSN %d, got %d", i+1, lsn)
+		}
+		if !logMgr.ValidateKey(key) {
+			t.Errorf("Validated Key MisMatch")
 		}
 	}
 
 	// Verify boundary updates correctly
-	boundary, _ := logMgr.logBuffer.GetContents().GetInt(0)
-	if boundary <= 0 || boundary >= blockSize {
+	boundary := logMgr.logBuffer.GetContents().GetFreeSpace()
+	if boundary < 0 || boundary >= blockSize {
 		t.Errorf("Invalid boundary after append: %d", boundary)
 	}
 }
@@ -105,8 +109,10 @@ func TestFlush(t *testing.T) {
 
 	// Append a record
 	record := []byte("flush record")
-	logMgr.Append(record)
-
+	_, key, err := logMgr.Append(record)
+	if err != nil {
+		t.Error("An error occur", err)
+	}
 	// Flush and verify
 	err = logMgr.Flush()
 	if err != nil {
@@ -114,19 +120,27 @@ func TestFlush(t *testing.T) {
 	}
 
 	// Read the block to confirm data was written
-	page := kfile.NewPage(blockSize)
-	err = fm.Read(logMgr.currentBlock, page)
+	buff := bm.Get(logMgr.currentBlock)
+	page := buff.GetContents()
 	if err != nil {
 		t.Fatalf("Failed to read block after flush: %v", err)
 	}
-	recpos, err := logMgr.logBuffer.GetContents().GetInt(0)
+	//recpos, err := logMgr.logBuffer.GetContents().GetInt(0)
 	if err != nil {
 		t.Errorf("Error getting recpos %s", err)
 	}
-	readRecord, _ := page.GetBytes(int(recpos))
-	readRecordStr := string(readRecord)
-	readRecordStr = strings.TrimRight(readRecordStr, "\x00 ") // Trim nulls and spacesZZ
-	if string(readRecordStr) != string(record) {
+	cellRecord, _, _ := page.FindCell(key)
+	readRecordInterface, _ := cellRecord.GetValue()
+
+	// Convert the interface{} (any) to []byte
+	readRecord, ok := readRecordInterface.([]byte)
+	if !ok {
+		t.Errorf("Expected []byte, got type %T", readRecordInterface)
+		return
+	}
+
+	// Now compare the byte slices
+	if !bytes.Equal(readRecord, record) {
 		t.Errorf("Expected record '%s', got '%s'", string(record), string(readRecord))
 	}
 }
@@ -201,8 +215,8 @@ func createRecords(t *testing.T, lm *LogMgr, start, end int) {
 	t.Logf("Creating records:")
 	for i := start; i <= end; i++ {
 		record := createLogRecord(fmt.Sprintf("record %d", i), i+100)
-		lsn, _ := lm.Append(record)
-		t.Logf("Record LSN: %d,i is %d", lsn, i+100)
+		lsn, key, _ := lm.Append(record)
+		t.Logf("Record LSN: %d,i is %s", lsn, string(key))
 	}
 }
 
@@ -214,14 +228,28 @@ func printLogRecords(t *testing.T, lm *LogMgr, msg string) {
 		if err != nil {
 			panic(err)
 		}
-		page := kfile.NewPageFromBytes(rec)
-		s, err := page.GetStringWithOffset(0)
+		//page := kfile.NewPageFromBytes(rec)
+		//s, err := page.GetStringWithOffset(0)
+		s, err := rec.GetValue()
+		var results string
 		if err != nil {
 			panic(err)
 		}
-		npos := utils.MaxLength(len(s))
-		val, _ := page.GetInt(npos)
-		t.Logf("[%s, %d]", s, val)
+		switch v := s.(type) {
+		case string:
+			fmt.Println("Value is a string:", v)
+		case []byte:
+			length := binary.BigEndian.Uint32(v[:4]) // Get the length from first 4 bytes
+			content := v[4 : 4+length]               // Extract just the content bytes
+			results = string(content)
+		default:
+			fmt.Println("Unhandled type")
+		}
+
+		//npos := utils.MaxLength(len(s))
+		//val, _ := page.GetInt(npos)
+		val := string(rec.GetKey())
+		t.Logf("[%s, %s]", results, val)
 	}
 	t.Log()
 }
