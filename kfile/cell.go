@@ -148,6 +148,10 @@ func (c *Cell) IsDeleted() bool {
 	return (c.flags & FLAG_DELETED) != 0
 }
 
+func (c *Cell) GetKey() []byte {
+	return c.key
+}
+
 // ToBytes Serialize cell from bytes
 func (c *Cell) ToBytes() []byte {
 	buf := new(bytes.Buffer)
