@@ -12,7 +12,7 @@ type BlockId struct {
 
 func NewBlockId(filename string, blknum int) *BlockId {
 	if err := ValidateFilename(filename); err != nil {
-		panic(err)
+		_ = fmt.Errorf("an error occured %s", err)
 	}
 	if err := ValidateBlockNumber(blknum); err != nil {
 		panic(err)
@@ -23,8 +23,12 @@ func NewBlockId(filename string, blknum int) *BlockId {
 	}
 }
 
-func (b *BlockId) FileName() string {
+func (b *BlockId) GetFileName() string {
 	return b.Filename
+}
+
+func (b *BlockId) SetFileName(filename string) {
+	b.Filename = filename
 }
 
 func (b *BlockId) Number() int {

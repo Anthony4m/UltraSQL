@@ -35,6 +35,11 @@ jobs:
     - name: Install Dependencies
       run: go mod tidy
 
+    - name: Install golangci-lint
+      run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+    - name: Run golangci-lint
+      run: golangci-lint run ./...
+
     # Step 5: Run Unit Tests
     - name: Run Tests
       run: go test -cover -v ./...

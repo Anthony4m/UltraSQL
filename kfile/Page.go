@@ -1,152 +1,173 @@
 package kfile
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
-type PageIDGenerator struct {
-	nextID uint64
-}
-
-func (g *PageIDGenerator) Next() uint64 {
-	return atomic.AddUint64(&g.nextID, 1)
-}
-
-var DefaultPageIDGenerator = &PageIDGenerator{
-	nextID: uint64(time.Now().UnixNano()), // Initialize with current timestamp
-}
-
 type Page struct {
-	data   []byte
-	pageId int
-	mu     sync.RWMutex
+	data         []byte
+	pageId       uint64
+	mu           sync.RWMutex
+	IsCompressed bool
+	isDirty      bool
 }
 
 const (
 	ErrOutOfBounds = "offset out of bounds"
-	bytesPerChar   = 1 //TODO: make this configurable or using UTF-8 aware methods
-
 )
 
-const pageIdOffset = 0 // First 8 bytes of the page are reserved for ID
+const pageIdOffset = 0
 
-// TODO: Implement the syncronized equivalent in Java
 func NewPage(blockSize int) *Page {
 	page := &Page{
 		data: make([]byte, blockSize),
 	}
-	pm := GetPageManager(blockSize)
-	pageId := DefaultPageIDGenerator.Next()
-	err := page.SetPageID(pageId)
-	if err != nil {
-		return nil
-	}
-	pm.SetPage(pageId, page)
 	return page
 }
 
 func NewPageFromBytes(b []byte) *Page {
-	dataCopy := make([]byte, len(b))
-	copy(dataCopy, b)
 	page := &Page{
-		data: dataCopy,
+		data: b,
 	}
-	pm := GetPageManager(len(b))
-	pageId := DefaultPageIDGenerator.Next()
-	err := page.SetPageID(pageId)
-	if err != nil {
-		return nil
-	}
-	pm.SetPage(pageId, page)
 	return page
 }
 
-func (p *Page) PageID() uint64 {
-	return binary.BigEndian.Uint64(p.data[:8])
-}
-
-// SetPageID writes the page ID to the first 8 bytes
-func (p *Page) SetPageID(id uint64) error {
-	if len(p.data) < 8 {
-		return fmt.Errorf("page too small to store ID")
-	}
-	binary.BigEndian.PutUint64(p.data[:8], id)
-	return nil
-}
-
-func (p *Page) GetInt(offset int) (int32, error) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if offset+4 > len(p.data) {
+func (p *Page) GetInt(offset int) (int, error) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	if offset > len(p.data) {
 		return 0, fmt.Errorf("%s: getting int", ErrOutOfBounds)
 	}
-	return int32(binary.BigEndian.Uint32(p.data[offset:])), nil
+	return int(binary.BigEndian.Uint32(p.data[offset:])), nil
 }
 
 func (p *Page) SetInt(offset int, val int) error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	p.mu.RLock()
+	defer p.mu.RUnlock()
 	if offset+4 > len(p.data) {
 		return fmt.Errorf("%s: setting int", ErrOutOfBounds)
 	}
 	binary.BigEndian.PutUint32(p.data[offset:], uint32(val))
+	p.SetIsDirty(true)
 	return nil
 }
 
 func (p *Page) GetBytes(offset int) ([]byte, error) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if offset > len(p.data) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	if offset >= len(p.data) {
 		return nil, fmt.Errorf("%s: getting bytes", ErrOutOfBounds)
 	}
-	dataCopy := make([]byte, len(p.data[offset:]))
-	copy(dataCopy, p.data[offset:])
-	return dataCopy, nil
+
+	// Read length prefix (4 bytes)
+	length := int(binary.BigEndian.Uint32(p.data[offset : offset+4]))
+	if offset+4+length > len(p.data) {
+		return nil, fmt.Errorf("%s: invalid length", ErrOutOfBounds)
+	}
+
+	// Copy data to prevent modification of internal state
+	result := make([]byte, length)
+	copy(result, p.data[offset+4:offset+4+length])
+
+	return result, nil
+}
+
+func (p *Page) GetBytesWithLen(offset int) ([]byte, error) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	if offset >= len(p.data) {
+		return nil, fmt.Errorf("%s: getting bytes", ErrOutOfBounds)
+	}
+
+	// Read length prefix (4 bytes)
+	length := int(binary.BigEndian.Uint32(p.data[offset : offset+4]))
+	if offset+4+length > len(p.data) {
+		return nil, fmt.Errorf("%s: invalid length", ErrOutOfBounds)
+	}
+
+	// Copy data to prevent modification of internal state
+	result := make([]byte, length)
+	copy(result, p.data[offset+4:offset+4+length])
+
+	return result, nil
 }
 
 func (p *Page) SetBytes(offset int, val []byte) error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
 	length := len(val)
-	if offset+length > len(p.data) {
+	totalSize := 4 + length // length prefix + data
+
+	if offset+totalSize > len(p.data) {
 		return fmt.Errorf("%s: setting bytes", ErrOutOfBounds)
 	}
-	copy(p.data[offset:], val)
+
+	// Write length prefix
+	binary.BigEndian.PutUint32(p.data[offset:], uint32(length))
+
+	// Write data
+	copy(p.data[offset+4:], val)
+
+	p.SetIsDirty(true)
 	return nil
 }
 
-func (p *Page) GetString(offset int, length int) (string, error) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if offset+length > len(p.data) {
+func (p *Page) GetString(offset int) (string, error) {
+	if offset > len(p.data) {
 		return "", fmt.Errorf("%s: getting string", ErrOutOfBounds)
 	}
 
-	str := string(trimZero(p.data[offset : offset+length]))
+	b, err := p.GetBytes(offset)
+	if err != nil {
+		return "", fmt.Errorf("error occured %s", err)
+	}
+
+	str := string(b)
+	return str, nil
+}
+
+func (p *Page) GetStringWithOffset(offset int) (string, error) {
+	if offset > len(p.data) {
+		return "", fmt.Errorf("%s: getting string", ErrOutOfBounds)
+	}
+
+	b, err := p.GetBytesWithLen(offset)
+	if err != nil {
+		return "", fmt.Errorf("error occurred %s", err)
+	}
+
+	// Check if there are at least 4 bytes for the offset
+	if len(b) < 4 {
+		return "", fmt.Errorf("insufficient bytes to extract string")
+	}
+	stringBytes := b[:len(b)-4]
+	trimmedBytes := bytes.TrimRight(stringBytes, "\x00")
+
+	str := string(trimmedBytes)
 	return str, nil
 }
 
 func (p *Page) SetString(offset int, val string) error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	length := len(val)
-	strBytes := make([]byte, length)
-	copy(strBytes, val)
+	strBytes := append([]byte(val))
 
-	if offset+length > len(p.data) {
-		return fmt.Errorf("%s: setting string", ErrOutOfBounds)
+	err := p.SetBytes(offset, strBytes)
+	if err != nil {
+		return err
 	}
-	copy(p.data[offset:], strBytes)
+	p.SetIsDirty(true)
 	return nil
 }
 
 func (p *Page) SetBool(offset int, val bool) error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	p.mu.RLock()
+	defer p.mu.RUnlock()
 	if offset+1 > len(p.data) {
 		return fmt.Errorf("%s: setting bool", ErrOutOfBounds)
 	}
@@ -155,12 +176,13 @@ func (p *Page) SetBool(offset int, val bool) error {
 	} else {
 		p.data[offset] = 0
 	}
+	p.SetIsDirty(true)
 	return nil
 }
 
 func (p *Page) GetBool(offset int) (bool, error) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	p.mu.RLock()
+	defer p.mu.RUnlock()
 	if offset+1 > len(p.data) {
 		return false, fmt.Errorf("%s: getting bool", ErrOutOfBounds)
 	}
@@ -171,19 +193,20 @@ func (p *Page) GetBool(offset int) (bool, error) {
 }
 
 func (p *Page) SetDate(offset int, val time.Time) error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	p.mu.RLock()
+	defer p.mu.RUnlock()
 	if offset+8 > len(p.data) {
 		return fmt.Errorf("%s: setting date", ErrOutOfBounds)
 	}
 	convertedVal := uint64(val.Unix())
 	binary.BigEndian.PutUint64(p.data[offset:], convertedVal)
+	p.SetIsDirty(true)
 	return nil
 }
 
 func (p *Page) GetDate(offset int) (time.Time, error) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	p.mu.RLock()
+	defer p.mu.RUnlock()
 	if offset+8 > len(p.data) {
 		return time.Unix(0, 0), fmt.Errorf("%s: getting date", ErrOutOfBounds)
 	}
@@ -191,13 +214,35 @@ func (p *Page) GetDate(offset int) (time.Time, error) {
 	return time.Unix(int64(timestamp), 0), nil
 }
 
-func MaxLength(strlen int) int {
-	bytesPerChar := 1
-	return 4 + (strlen * bytesPerChar)
+func (p *Page) SetIsDirty(dirt bool) {
+	p.isDirty = dirt
+}
+
+func (p *Page) GetIsDirty() bool {
+	return p.isDirty
 }
 
 func (p *Page) Contents() []byte {
 	return p.data
+}
+
+func (p *Page) SetContents(data []byte) {
+	p.data = data
+}
+
+func (p *Page) Size() int {
+	return len(p.data)
+}
+
+func (p *Page) Available() int {
+	return len(p.data) - p.GetUsedSpace()
+}
+
+func (p *Page) GetUsedSpace() int {
+	//TODO:
+	// This should be implemented based on page type
+	// For slotted pages, it would include header + slots + cells
+	return 0
 }
 
 func trimZero(s []byte) []byte {
