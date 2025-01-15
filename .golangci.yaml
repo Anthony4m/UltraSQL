@@ -1,0 +1,53 @@
+linters:
+  # Enable specific linter
+  # https://golangci-lint.run/usage/linters/#enabled-by-default
+  enable:
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - bodyclose
+    - cyclop
+    - depguard
+    - err113
+    - errorlint
+    - exhaustive
+    - gochecknoglobals
+    - goconst
+    - gocritic
+    - iface
+    - ireturn
+    - makezero
+    - unparam
+    - revive
+  disable:
+    - wsl
+  # Enable presets.
+  # https://golangci-lint.run/usage/linters
+  # Default: []
+  presets:
+    - bugs
+    - comment
+    - complexity
+    - error
+    - format
+    - import
+    - metalinter
+    - module
+    - performance
+    - sql
+    - style
+    - test
+    - unused
+  # Enable only fast linters from enabled linters set (first run won't be fast)
+  # Default: false
+  fast: true
+  linters-settings:
+    revive:
+      rules:
+        - name: var-naming
+          arguments:
+            allowed-names: ^[a-z]+([A-Z][a-z0-9]+)*$ # Regex for camelCase
+            forbidden-names: ^[_a-z]+(_[a-z0-9]+)*$ # Regex for snake_case
