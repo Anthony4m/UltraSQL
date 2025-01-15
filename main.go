@@ -28,31 +28,27 @@ func main() {
 	blk, err := fm.Append(Filename)
 	checkError(err, "Failed to append block")
 	fmt.Printf("Appended Block: %v\n", blk)
-
-	pageManager := kfile.NewPageManager(blockSize)
-	newPage := kfile.NewPage(blockSize, Filename)
-	pageID := kfile.NewPageId(kfile.BlockId{Filename: Filename, Blknum: blk.Number()})
+	newPage := kfile.NewPage(blockSize)
 
 	err = newPage.SetInt(0, 42)
 	checkError(err, "Failed to set int")
 
-	err = newPage.SetString(4, "Hello, Go!")
+	err = newPage.SetString(4, "Helo, Go!")
 	checkError(err, "Failed to set string")
 
-	currentTime := time.Now()
+	currentTime := time.Date(2023, time.December, 1, 10, 30, 0, 0, time.UTC)
 	err = newPage.SetDate(15, currentTime)
 	checkError(err, "Failed to set date")
 
-	err = newPage.SetBool(50, true)
+	err = newPage.SetBool(50, false)
 	checkError(err, "Failed to set bool")
 
 	err = fm.Write(blk, newPage)
 	checkError(err, "Failed to write to block")
 
-	readPage := kfile.NewPage(blockSize, Filename)
-	pageManager.SetPage(pageID, readPage)
+	readPage := kfile.NewPage(blockSize)
 
-	err = fm.Read(blk, pageManager, pageID)
+	err = fm.Read(blk, readPage)
 	checkError(err, "Failed to read from block")
 
 	intVal, err := readPage.GetInt(0)
@@ -61,7 +57,7 @@ func main() {
 	strVal, err := readPage.GetString(4, len("Hello, Go!"))
 	checkError(err, "Failed to get string")
 
-	dateVal, err := readPage.GetDate(30)
+	dateVal, err := readPage.GetDate(15)
 	checkError(err, "Failed to get date")
 
 	boolVal, err := readPage.GetBool(50)
