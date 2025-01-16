@@ -74,8 +74,6 @@ func (it *LogIterator) moveToBlock(blk *kfile.BlockId) error {
 		return err
 	}
 	it.slots = it.buff.GetContents().GetAllSlots()
-	//it.boundary, _ = it.buff.GetContents().GetInt(0)
-	//it.currentPos = it.boundary
 	it.currentPos = len(it.slots) - 1
 	return nil
 }
