@@ -22,6 +22,10 @@ linters:
     - makezero
     - unparam
     - revive
+    - goimports
+    - goconst
+    - unparam
+    - staticcheck
   disable:
     - wsl
   # Enable presets.
@@ -51,3 +55,5 @@ linters:
           arguments:
             allowed-names: ^[a-z]+([A-Z][a-z0-9]+)*$ # Regex for camelCase
             forbidden-names: ^[_a-z]+(_[a-z0-9]+)*$ # Regex for snake_case
+    goconst:
+      min-occurrences: 3

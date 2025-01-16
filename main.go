@@ -28,7 +28,7 @@ func main() {
 	blk, err := fm.Append(Filename)
 	checkError(err, "Failed to append block")
 	fmt.Printf("Appended Block: %v\n", blk)
-	newPage := kfile.NewPage(blockSize)
+	newPage := kfile.NewSlottedPage(blockSize)
 
 	err = newPage.SetInt(0, 42)
 	checkError(err, "Failed to set int")
@@ -46,7 +46,7 @@ func main() {
 	err = fm.Write(blk, newPage)
 	checkError(err, "Failed to write to block")
 
-	readPage := kfile.NewPage(blockSize)
+	readPage := kfile.NewSlottedPage(blockSize)
 
 	err = fm.Read(blk, readPage)
 	checkError(err, "Failed to read from block")

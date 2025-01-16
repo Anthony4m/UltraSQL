@@ -9,7 +9,6 @@ import (
 	"ultraSQL/buffer"
 	"ultraSQL/kfile"
 	"ultraSQL/utils"
-	"unsafe"
 )
 
 func TestLogMgrAppend(t *testing.T) {
@@ -49,11 +48,11 @@ func verifyMultipleRecordsInSingleBlock(t *testing.T, lm *LogMgr, blockSize int)
 	t.Log("Testing appending multiple records within a single block...")
 
 	// Append multiple small records
-	record1 := record("record2", 200)
-	record2 := record("record1", 100)
+	record1 := "record2"
+	record2 := "record1"
 
-	lsn1, _, err := lm.Append(record1)
-	lsn2, _, err := lm.Append(record2)
+	lsn1, _, err := lm.Append([]byte(record1))
+	lsn2, _, err := lm.Append([]byte(record2))
 	if err != nil {
 		t.Errorf("Error occured %s", err)
 	}
@@ -69,7 +68,7 @@ func verifyMultipleRecordsInSingleBlock(t *testing.T, lm *LogMgr, blockSize int)
 		t.Errorf("Error occured %s", err)
 	}
 	records := readAllRecords(t, iter)
-	expected := []string{"record1, 100", "record2, 200"}
+	expected := []string{"record1", "record2"}
 	compareRecords(t, records, expected)
 }
 
@@ -80,8 +79,12 @@ func verifyRecordsAcrossBlocks(t *testing.T, lm *LogMgr, blockSize int) {
 	// Each record is 1/5 of the block
 	records := []string{}
 	for i := 1; i <= 10; i++ {
-		record := record(fmt.Sprintf("record%d", i), i*10)
-		lm.Append(record)
+		str := string(rune(i))
+		record := []byte(str)
+		_, _, err := lm.Append(record)
+		if err != nil {
+			return
+		}
 		records = append(records, fmt.Sprintf("record%d, %d", i, i*10))
 	}
 
@@ -94,23 +97,6 @@ func verifyRecordsAcrossBlocks(t *testing.T, lm *LogMgr, blockSize int) {
 	compareRecords(t, readRecords, records)
 }
 
-func record(s string, n int) []byte {
-	strOffset := utils.MaxLength(len(s))
-	record := make([]byte, strOffset+int(unsafe.Sizeof(0))) // String + Integer
-	page := kfile.NewPageFromBytes(record)
-
-	if err := page.SetString(0, s); err != nil {
-		panic(fmt.Sprintf("Failed to set string: %v", err))
-	}
-	if err := page.SetInt(strOffset, n); err != nil {
-		panic(fmt.Sprintf("Failed to set int: %v", err))
-	}
-
-	// Log serialized record details
-	//fmt.Printf("Serialized record [%s, %d]: strOffset=%d, recordLen=%d\n", s, n, strOffset, len(record))
-	return record
-}
-
 func readAllRecords(t *testing.T, iter utils.Iterator[[]byte]) []string {
 	var records []string
 	for iter.HasNext() {
@@ -119,29 +105,10 @@ func readAllRecords(t *testing.T, iter utils.Iterator[[]byte]) []string {
 			t.Fatalf("Error reading record: %v", err)
 		}
 
-		//page := kfile.NewPageFromBytes(rec)
-		//s, err := page.GetString(0)
-		s, err := rec.GetValue()
-		if err != nil {
-			panic(err)
-		}
-		s, ok := s.(string)
-		if ok {
-			fmt.Println("Converted to string:", s)
-		} else {
-			fmt.Println("Value is not a string")
-		}
+		s := string(rec)
 
-		//npos := utils.MaxLength(len(s)) // Ensure alignment
-		//n, err := page.GetInt(npos)
-		n := rec.GetKey()
-		if err != nil {
-			t.Fatalf("Error getting int: %v", err)
-		}
-
-		record := fmt.Sprintf("%s, %d", s, n)
+		record := fmt.Sprintf("%s", s)
 		records = append(records, record)
-		//t.Logf("Deserialized record: [%s, %d] (npos=%d, recLen=%d)", s, n, npos, len(rec))
 	}
 	return records
 }

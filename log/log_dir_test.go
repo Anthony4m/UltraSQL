@@ -2,7 +2,7 @@ package log
 
 import (
 	"bytes"
-	"encoding/binary"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -165,15 +165,27 @@ func TestAppendBoundary(t *testing.T) {
 
 	// Append records to fill the block
 	record := make([]byte, 50) // Record size
-	for i := 0; i < blockSize/len(record)-2; i++ {
-		logMgr.Append(record)
+	for i := 0; i < blockSize/len(record)-3; i++ {
+		lsn, cellKey, err := logMgr.Append(record)
+		if err != nil {
+			t.Errorf("Expected cell key and lsn got %s", err)
+		}
+		if lsn < 0 {
+			t.Errorf("Invalid lsn")
+		}
+		if cellKey == nil {
+			t.Errorf("Invalid CellKey")
+		}
 	}
 
-	initialBlock := logMgr.currentBlock
-	logMgr.Append(record)
+	_, _, err = logMgr.Append(record)
 
-	if logMgr.currentBlock == initialBlock {
-		t.Errorf("Expected new block after boundary overflow, but block did not change")
+	var customErr *Error
+	if errors.As(err, &customErr) {
+		expected := "log operation Append failed: failed to insert cell page full"
+		if customErr.Error() != expected {
+			t.Errorf("Expected '%s' but got: '%s'", expected, customErr.Error())
+		}
 	}
 }
 
@@ -228,28 +240,8 @@ func printLogRecords(t *testing.T, lm *LogMgr, msg string) {
 		if err != nil {
 			panic(err)
 		}
-		//page := kfile.NewPageFromBytes(rec)
-		//s, err := page.GetStringWithOffset(0)
-		s, err := rec.GetValue()
-		var results string
-		if err != nil {
-			panic(err)
-		}
-		switch v := s.(type) {
-		case string:
-			fmt.Println("Value is a string:", v)
-		case []byte:
-			length := binary.BigEndian.Uint32(v[:4]) // Get the length from first 4 bytes
-			content := v[4 : 4+length]               // Extract just the content bytes
-			results = string(content)
-		default:
-			fmt.Println("Unhandled type")
-		}
-
-		//npos := utils.MaxLength(len(s))
-		//val, _ := page.GetInt(npos)
-		val := string(rec.GetKey())
-		t.Logf("[%s, %s]", results, val)
+		s := string(rec)
+		t.Logf("[%s]", s)
 	}
 	t.Log()
 }
