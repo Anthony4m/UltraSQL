@@ -143,42 +143,6 @@ func (lm *LogMgr) Append(logrec []byte) (int, []byte, error) {
 	}
 
 	lm.logBuffer.SetContents(logpage)
-	//logPage := lm.bm.Get(lm.currentBlock).GetContents()
-
-	//boundary := logPage.GetFreeSpace()
-	//
-	//recsize := len(logrec)
-	//intBytes := int(unsafe.Sizeof(0))
-	//bytesNeeded := recsize + intBytes
-
-	//if (boundary - bytesNeeded) < intBytes {
-	//	if err := lm.Flush(); err != nil {
-	//		return 0, &Error{Op: "append", Err: fmt.Errorf("failed to flush: %v", err)}
-	//	}
-	//
-	//	if lm.currentBlock, _ = lm.appendNewBlock(); lm.currentBlock == nil {
-	//		return 0, &Error{Op: "append", Err: fmt.Errorf("failed to append new block")}
-	//	}
-	//	//if err := lm.logBuffer.GetContents().SetInt(0, lm.fm.BlockSize()); err != nil {
-	//	//	return 0, &Error{Op: "Pin", Err: fmt.Errorf("failed to append initial block")}
-	//	//}
-	//
-	//	if err := lm.logBuffer.Flush(); err != nil {
-	//		return 0, &Error{Op: "Pin", Err: fmt.Errorf("failed to append initial block")}
-	//	}
-	//
-	//	boundary = logPage.GetFreeSpace()
-	//}
-
-	//recpos := boundary - bytesNeeded
-	//if err := logPage.SetBytes(recpos, logrec); err != nil {
-	//	return 0, &Error{Op: "append", Err: fmt.Errorf("failed to set bytes: %v", err)}
-	//}
-	//
-	//if err := logPage.SetInt(0, recpos); err != nil {
-	//	return 0, &Error{Op: "append", Err: fmt.Errorf("failed to update boundary: %v", err)}
-	//}
-
 	lm.latestLSN++
 	lm.logBuffer.MarkModified(-1, lm.latestLSN)
 	return lm.latestLSN, cellKey, nil
