@@ -91,25 +91,42 @@ func NewMetaData(created_at time.Time) FileMetadata {
 	}
 }
 func (fm *FileMgr) PreallocateFile(blk *BlockId, size int64) error {
+	if err := fm.validatePreallocationParams(blk, size); err != nil {
+		return err
+	}
+
+	filename := blk.GetFileName()
+	if err := fm.validatePermissions(); err != nil {
+		return err
+	}
+
+	return fm.performPreallocation(filename, size)
+}
+
+func (fm *FileMgr) validatePreallocationParams(blk *BlockId, size int64) error {
 	if size%int64(fm.blocksize) != 0 {
 		return fmt.Errorf("size must be multiple of blocksize %d", fm.blocksize)
 	}
 
-	filename := blk.GetFileName()
-	if filename == "" {
+	if blk.GetFileName() == "" {
 		return fmt.Errorf("invalid filename")
 	}
+	return nil
+}
 
+func (fm *FileMgr) validatePermissions() error {
 	dirStat, err := os.Stat(fm.dbDirectory)
 	if err != nil {
 		return fmt.Errorf("failed to stat directory: %v", err)
 	}
-	dirMode := dirStat.Mode()
-	isDirWritable := dirMode&0200 != 0
-	if !isDirWritable {
+
+	if dirStat.Mode()&0200 == 0 {
 		return fmt.Errorf("directory is not writable")
 	}
+	return nil
+}
 
+func (fm *FileMgr) performPreallocation(filename string, size int64) error {
 	f, err := fm.getFile(filename)
 	if err != nil {
 		return fmt.Errorf("failed to get file for preallocation: %v", err)
@@ -120,24 +137,19 @@ func (fm *FileMgr) PreallocateFile(blk *BlockId, size int64) error {
 		return fmt.Errorf("failed to stat file: %v", err)
 	}
 
-	mode := stat.Mode()
-	isWritable := mode&0200 != 0
-	if !isWritable {
+	if stat.Mode()&0200 == 0 {
 		return fmt.Errorf("file is not writable")
 	}
 
-	currentSize := stat.Size()
-	if currentSize >= size {
+	if stat.Size() >= size {
 		return nil
 	}
 
-	err = f.Truncate(size)
-	if err != nil {
+	if err := f.Truncate(size); err != nil {
 		return fmt.Errorf("failed to preallocate sparse file: %v", err)
 	}
 
-	err = f.Sync()
-	if err != nil {
+	if err := f.Sync(); err != nil {
 		return fmt.Errorf("failed to sync preallocated file: %v", err)
 	}
 
