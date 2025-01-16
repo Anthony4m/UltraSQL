@@ -71,7 +71,7 @@ func (sp *SlottedPage) InsertCell(cell *Cell) error {
 	}
 
 	// Find insertion point in slot array (binary search by key)
-	insertPos := sp.findSlotPosition(cell.key)
+	insertPos := sp.FindSlotPosition(cell.key)
 
 	// Insert new offset into slot array
 	sp.slots = append(sp.slots, 0)
@@ -91,7 +91,7 @@ func (sp *SlottedPage) InsertCell(cell *Cell) error {
 }
 
 // Find position to insert new cell based on key
-func (sp *SlottedPage) findSlotPosition(key []byte) int {
+func (sp *SlottedPage) FindSlotPosition(key []byte) int {
 	// Binary search through slots
 	low, high := 0, len(sp.slots)-1
 
