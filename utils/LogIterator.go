@@ -32,17 +32,27 @@ func (it *LogIterator) HasNext() bool {
 	return it.currentPos >= 0 || it.blk.Number() > 0
 }
 
-func (it *LogIterator) Next() (*kfile.Cell, error) {
+func (it *LogIterator) Next() ([]byte, error) {
 	if it.currentPos < 0 {
 		it.blk = kfile.NewBlockId(it.blk.GetFileName(), it.blk.Number()-1)
 		if err := it.moveToBlock(it.blk); err != nil {
 			return nil, err
 		}
 	}
-	rec, err := it.buff.GetContents().GetCellBySlot(it.currentPos)
+	cell, err := it.buff.GetContents().GetCellBySlot(it.currentPos)
 	if err != nil {
 		return nil, fmt.Errorf("error while getting bytes: %v", err)
 	}
+	cellVal, err := cell.GetValue()
+	if err != nil {
+		return nil, fmt.Errorf("error while getting value: %v", err)
+	}
+	rec, ok := cellVal.([]byte)
+
+	if !ok {
+		panic("value is not byte")
+	}
+
 	//recLen := string(rec)
 	//npos := MaxLength(len(recLen))
 	//it.currentPos += int(unsafe.Sizeof(0)) + npos
