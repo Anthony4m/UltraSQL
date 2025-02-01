@@ -12,8 +12,8 @@ func TestCell_Basic(t *testing.T) {
 	key := []byte("testKey")
 	cell := NewKVCell(key)
 
-	if cell.flags != KV_CELL {
-		t.Errorf("Expected KV_CELL flag, got %d", cell.flags)
+	if cell.cellType != CellTypeKV {
+		t.Errorf("Expected KV_CELL flag, got %d", cell.cellType)
 	}
 
 	if cell.keySize != len(key) {
@@ -32,11 +32,11 @@ func TestCell_SetValue(t *testing.T) {
 		valType byte
 		wantErr bool
 	}{
-		{"Integer", 42, INTEGER_TYPE, false},
-		{"String", "test", STRING_TYPE, false},
-		{"Boolean", true, BOOL_TYPE, false},
-		//{"Date", time.Now(), DATE_TYPE, false},
-		{"Bytes", []byte{1, 2, 3}, BYTES_TYPE, false},
+		{"Integer", 42, IntegerType, false},
+		{"String", "test", StringType, false},
+		{"Boolean", true, BoolType, false},
+		//{"Date", time.Now(), DateType, false},
+		{"Bytes", []byte{1, 2, 3}, BytesType, false},
 		{"Invalid", struct{}{}, 0, true},
 	}
 
@@ -147,7 +147,7 @@ func TestCell_Serialization(t *testing.T) {
 				t.Errorf("Key mismatch: got %v, want %v", restored.key, original.key)
 			}
 
-			if original.flags == KV_CELL {
+			if original.cellType == CellTypeKV {
 				if !bytes.Equal(original.value, restored.value) {
 					t.Errorf("Value mismatch: got %v, want %v", restored.value, original.value)
 				}
@@ -175,7 +175,7 @@ func TestSlottedPage_Basic(t *testing.T) {
 func TestSlottedPage_InsertCell(t *testing.T) {
 	page := NewSlottedPage(DefaultPageSize)
 
-	// Insert cells with increasing keys
+	// AllocateBufferForBlock cells with increasing keys
 	for i := 0; i < 10; i++ {
 		cell := NewKVCell([]byte(fmt.Sprintf("key%d", i)))
 		err := cell.SetValue(fmt.Sprintf("value%d", i))
@@ -229,7 +229,7 @@ func TestSlottedPage_InsertCell(t *testing.T) {
 func TestSlottedPage_DeleteAndCompact(t *testing.T) {
 	page := NewSlottedPage(DefaultPageSize)
 
-	// Insert cells
+	// AllocateBufferForBlock cells
 	for i := 0; i < 5; i++ {
 		cell := NewKVCell([]byte(fmt.Sprintf("key%d", i)))
 		cell.SetValue(fmt.Sprintf("value%d", i))
@@ -300,7 +300,7 @@ func TestSlottedPage_SpaceManagement(t *testing.T) {
 		t.Error("Expected error when inserting cell too large for page")
 	}
 
-	// Insert cells until page is full
+	// AllocateBufferForBlock cells until page is full
 	i := 0
 	for {
 		cell := NewKVCell([]byte(fmt.Sprintf("k%d", i)))
