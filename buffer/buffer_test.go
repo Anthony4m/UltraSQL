@@ -27,7 +27,7 @@ func TestBuffer(t *testing.T) {
 	//blk1, _ := fm.Append("bufferTest.db")
 
 	buff1, _ := bm.Pin(kfile.NewBlockId("bufferTest.db", 1))
-	p := buff1.GetContents()
+	p := buff1.Contents()
 	n, err := p.GetInt(80)
 	if err != nil {
 		fmt.Printf("An error occurred %s", err)
@@ -35,19 +35,19 @@ func TestBuffer(t *testing.T) {
 	p.SetInt(80, n+1)
 	buff1.MarkModified(1, 0)
 	fmt.Printf("The new value is %d", n+1)
-	bm.UnPin(buff1)
+	bm.Unpin(buff1)
 
 	buff2, _ := bm.Pin(kfile.NewBlockId("bufferTest", 2))
 	buff3, _ := bm.Pin(kfile.NewBlockId("bufferTest", 3))
 	buff4, _ := bm.Pin(kfile.NewBlockId("bufferTest", 4))
 	fmt.Println(buff3, buff4)
 
-	bm.UnPin(buff2)
+	bm.Unpin(buff2)
 	buff2, _ = bm.Pin(kfile.NewBlockId(filename, 1))
-	p2 := buff2.GetContents()
+	p2 := buff2.Contents()
 	p2.SetInt(80, 9999)
 	buff2.MarkModified(1, 0)
-	bm.UnPin(buff2)
+	bm.Unpin(buff2)
 }
 
 // MockBuffer is a mock implementation of the Buffer interface.
@@ -145,7 +145,7 @@ func TestPinAndUnpin(t *testing.T) {
 	}
 
 	// Unpin first block
-	bufferMgr.UnPin(buf1)
+	bufferMgr.Unpin(buf1)
 	if bufferMgr.available() != 1 {
 		t.Errorf("Expected 1 available blk after UnPin, got %d", bufferMgr.available())
 	}
@@ -185,8 +185,8 @@ func TestPinTimeout(t *testing.T) {
 	if buf3 != nil {
 		t.Error("Expected nil blk due to timeout, but got a blk")
 	}
-	if time.Since(start) < MAX_TIME {
-		t.Errorf("Expected wait time to be at least %v, but got %v", MAX_TIME, time.Since(start))
+	if time.Since(start) < MaxTime {
+		t.Errorf("Expected wait time to be at least %v, but got %v", MaxTime, time.Since(start))
 	}
 }
 
@@ -286,7 +286,7 @@ func TestDeterministicBufferAllocation(t *testing.T) {
 
 	// Unpin buffers
 	for _, buff := range pinnedBuffers {
-		bufferMgr.UnPin(buff)
+		bufferMgr.Unpin(buff)
 	}
 
 	// Verify availability is back to initial state
@@ -317,7 +317,7 @@ func BenchmarkBufferManagerConcurrency(b *testing.B) {
 		for pb.Next() {
 			buff, err := bufferMgr.Pin(blk)
 			if err == nil {
-				bufferMgr.UnPin(buff)
+				bufferMgr.Unpin(buff)
 			}
 		}
 	})
@@ -362,7 +362,7 @@ func TestDeterministicConcurrentBufferAccess(t *testing.T) {
 			time.Sleep(10 * time.Millisecond)
 
 			// Unpin
-			bufferMgr.UnPin(buff)
+			bufferMgr.Unpin(buff)
 			simulator.logEvent(fmt.Sprintf("Goroutine %d completed Pin/UnPin", id))
 		}(i)
 	}
@@ -418,5 +418,5 @@ func TestDeterministicBufferOverflow(t *testing.T) {
 		t.Errorf("Expected an abortion got a block: %v", pinErr)
 	}
 
-	bufferMgr.UnPin(firstBuffers[0])
+	bufferMgr.Unpin(firstBuffers[0])
 }
