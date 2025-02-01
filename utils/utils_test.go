@@ -79,7 +79,7 @@ func TestLogIterator_EmptyIterator(t *testing.T) {
 	err := fm.Write(blk, page)
 	require.NoError(t, err)
 	bm := buffer.NewBufferMgr(fm, 3)
-	iterator := NewLogIterator(fm, bm, blk)
+	iterator, _ := NewLogIterator(fm, bm, blk)
 
 	assert.False(t, iterator.HasNext())
 }
@@ -113,7 +113,7 @@ func TestMoveToBlock(t *testing.T) {
 	buff.SetContents(page)
 	bm := buffer.NewBufferMgr(fm, 3)
 	// Initialize LogIterator and move to block
-	iter := NewLogIterator(fm, bm, block)
+	iter, _ := NewLogIterator(fm, bm, block)
 	err = iter.moveToBlock(block)
 	require.NoError(t, err)
 
