@@ -1,211 +1,206 @@
 package buffer
 
 import (
+	"errors"
 	"fmt"
-	"strings"
+	"io"
 	"sync"
 	"time"
 	"ultraSQL/kfile"
 )
 
+const MaxTime = 1000 * time.Millisecond
+
+// ErrNoUnpinnedBuffers is returned when no unpinned buffers are available for eviction.
+var ErrNoUnpinnedBuffers = errors.New("no unpinned buffers available for eviction")
+
 type BufferMgr struct {
-	bufferPool    map[*kfile.BlockId]*Buffer
-	numAvailable  int
-	mu            sync.RWMutex
-	cond          *sync.Cond
+	mu           sync.RWMutex
+	bufferPool   map[*kfile.BlockId]*Buffer
+	fm           *kfile.FileMgr
+	numAvailable int
+	availableCh  chan struct{}
+
+	// LRU fields
 	lruHead       *Buffer
 	lruTail       *Buffer
-	fm            *kfile.FileMgr
 	accessCounter uint64
-	frequency     int
-	hitCounter    int
-	missCounter   int
-	availableCh   chan struct{}
+
+	// if used or remove them
+	hitCounter  int
+	missCounter int
 }
 
-const MAX_TIME = 1000 * time.Millisecond
-
-var (
-	ErrNoUnpinnedBuffers = fmt.Errorf("no unpinned buffers available for eviction")
-)
-
-func NewBufferMgr(fm *kfile.FileMgr, numbuffs int) *BufferMgr {
+// NewBufferMgr creates a new BufferMgr with the specified number of buffers.
+func NewBufferMgr(fm *kfile.FileMgr, numBuffs int) *BufferMgr {
 	bm := &BufferMgr{
-		bufferPool:    make(map[*kfile.BlockId]*Buffer, numbuffs),
-		numAvailable:  numbuffs,
-		fm:            fm,
-		accessCounter: 0,
-		frequency:     0,
-		hitCounter:    0,
-		missCounter:   0,
+		bufferPool:   make(map[*kfile.BlockId]*Buffer, numBuffs),
+		fm:           fm,
+		numAvailable: numBuffs,
+		availableCh:  make(chan struct{}, numBuffs),
 	}
-	bm.availableCh = make(chan struct{}, numbuffs)
-	bm.cond = sync.NewCond(&bm.mu)
 	return bm
 }
 
-func (bM *BufferMgr) moveToHead(buff *Buffer) {
-	if buff == bM.lruHead {
+// Pin retrieves (or creates) a Buffer for blk, possibly blocking until available.
+func (bm *BufferMgr) Pin(blk *kfile.BlockId) (*Buffer, error) {
+	startTime := time.Now()
+
+	bm.mu.Lock()
+	defer bm.mu.Unlock()
+
+	for {
+		buff := bm.Get(blk) // returns pinned buffer if found
+		if buff == nil && bm.numAvailable > 0 {
+			buff = bm.AllocateBufferForBlock(blk)
+		}
+		if buff != nil {
+			return buff, nil
+		}
+
+		// none available; check for timeout
+		if time.Since(startTime) > MaxTime {
+			return nil, fmt.Errorf("BufferAbortException: No buffers after %v", MaxTime)
+		}
+
+		// wait for a buffer to become free
+		bm.mu.Unlock()
+		select {
+		case <-bm.availableCh:
+		case <-time.After(MaxTime - time.Since(startTime)):
+		}
+		bm.mu.Lock()
+	}
+}
+
+// Get returns the buffer if it exists in the pool, else nil. The buffer is pinned if found.
+func (bm *BufferMgr) Get(blk *kfile.BlockId) *Buffer {
+	if buff, ok := bm.bufferPool[blk]; ok {
+		buff.Pin()
+		bm.updateAccessTime(buff)
+		return buff
+	}
+	return nil
+}
+
+// Unpin decrements the pin count. If the buffer becomes unpinned, increment bm.numAvailable
+// and signal bm.availableCh that a buffer is free.
+func (bm *BufferMgr) Unpin(buff *Buffer) {
+	bm.mu.Lock()
+	defer bm.mu.Unlock()
+
+	if err := buff.Unpin(); err != nil {
+		// better to log than panic
+		fmt.Printf("warning: Unpin called on unpinned buffer: %v\n", err)
 		return
 	}
+	if !buff.Pinned() {
+		bm.numAvailable++
+		select {
+		case bm.availableCh <- struct{}{}:
+		default:
+		}
+	}
+}
 
+// FlushAll flushes any buffer belonging to txnum.  Must hold at least a read lock if
+// the map is never modified concurrently. Otherwise, use a write lock.
+func (bm *BufferMgr) FlushAll(txnum int) {
+	bm.mu.Lock()
+	defer bm.mu.Unlock()
+
+	for _, buff := range bm.bufferPool {
+		if buff.ModifyingTxID() == txnum {
+			_ = buff.Flush()
+		}
+	}
+}
+
+func (bm *BufferMgr) AllocateBufferForBlock(blk *kfile.BlockId) *Buffer {
+	// See if block is already in the pool
+	if existing, ok := bm.bufferPool[blk]; ok {
+		bm.moveToHead(existing)
+		existing.Pin()
+		return existing
+	}
+
+	// Evict if no available
+	if bm.numAvailable == 0 {
+		evicted, err := bm.findAndEvictBuffer()
+		if err != nil {
+			// in real code, handle or return error
+			fmt.Printf("error evicting buffer: %v\n", err)
+			return nil
+		}
+		delete(bm.bufferPool, evicted.blk)
+	}
+
+	newBuff := NewBuffer(bm.fm)
+	bm.bufferPool[blk] = newBuff
+	if err := newBuff.assignToBlock(blk); err != nil {
+		// if not EOF, log or return
+		if !errors.Is(err, io.EOF) {
+			fmt.Printf("assignToBlock error: %v\n", err)
+			return nil
+		}
+	}
+	bm.moveToHead(newBuff)
+	newBuff.Pin()
+	bm.numAvailable--
+	return newBuff
+}
+
+// findAndEvictBuffer finds an unpinned buffer from the LRU tail. Flush if dirty.
+func (bm *BufferMgr) findAndEvictBuffer() (*Buffer, error) {
+	b := bm.lruTail
+	for b != nil && b.Pinned() {
+		b = b.prev
+	}
+	if b == nil {
+		return nil, ErrNoUnpinnedBuffers
+	}
+	if b.Dirty {
+		if err := b.Flush(); err != nil {
+			return nil, fmt.Errorf("failed to flush: %w", err)
+		}
+	}
+	return b, nil
+}
+
+func (bm *BufferMgr) moveToHead(buff *Buffer) {
+	if buff == bm.lruHead {
+		return
+	}
+	// unlink
 	if buff.prev != nil {
 		buff.prev.next = buff.next
 	}
 	if buff.next != nil {
 		buff.next.prev = buff.prev
 	}
-	if buff == bM.lruTail {
-		bM.lruTail = buff.prev
+	if buff == bm.lruTail {
+		bm.lruTail = buff.prev
 	}
-
-	buff.next = bM.lruHead
+	// put at head
+	buff.next = bm.lruHead
 	buff.prev = nil
-	if bM.lruHead != nil {
-		bM.lruHead.prev = buff
+	if bm.lruHead != nil {
+		bm.lruHead.prev = buff
 	}
-	bM.lruHead = buff
-	if bM.lruTail == nil {
-		bM.lruTail = buff
+	bm.lruHead = buff
+	if bm.lruTail == nil {
+		bm.lruTail = buff
 	}
 }
 
+func (bm *BufferMgr) updateAccessTime(buff *Buffer) {
+	bm.accessCounter++
+	buff.lastAccessTime = bm.accessCounter
+}
+
+// available returns the number of available (unpinned) buffers.
 func (bM *BufferMgr) available() int {
 	bM.mu.RLock()
 	defer bM.mu.RUnlock()
 	return bM.numAvailable
-}
-
-func (bM *BufferMgr) FlushAll(txtnum int) {
-	bM.mu.RLock()
-	defer bM.mu.RUnlock()
-	for _, buff := range bM.bufferPool {
-		if buff.modifyingTx() == txtnum {
-			buff.Flush()
-		}
-	}
-}
-
-func (bM *BufferMgr) UnPin(buff *Buffer) {
-	bM.mu.Lock()
-	defer bM.mu.Unlock()
-
-	err := buff.UnPin()
-	if err != nil {
-		panic(err)
-	}
-	if !buff.IsPinned() {
-		bM.numAvailable++
-		select {
-		case bM.availableCh <- struct{}{}:
-		default:
-		}
-	}
-}
-
-func (bM *BufferMgr) Pin(blk *kfile.BlockId) (*Buffer, error) {
-	bM.mu.Lock()
-	defer bM.mu.Unlock()
-
-	startTime := time.Now()
-
-	buff := bM.Get(blk)
-	if buff == nil && bM.numAvailable > 0 {
-		buff = bM.Insert(blk)
-	}
-	for buff == nil && !bM.waitingTooLong(startTime) {
-		bM.mu.Unlock()
-
-		select {
-		case <-bM.availableCh:
-		case <-time.After(MAX_TIME):
-			bM.mu.Lock()
-			return nil, fmt.Errorf("BufferAbortException: No buffers available after waiting %v", MAX_TIME)
-		}
-
-		bM.mu.Lock()
-		buff = bM.Get(blk)
-		if buff == nil && bM.numAvailable > 0 {
-			buff = bM.Insert(blk)
-		}
-	}
-
-	if buff == nil {
-		return nil, fmt.Errorf("BufferAbortException: No buffers available after waiting %v", MAX_TIME)
-	}
-
-	return buff, nil
-}
-
-func (bM *BufferMgr) waitingTooLong(startTime time.Time) bool {
-	return time.Since(startTime) > MAX_TIME
-}
-
-func (bm *BufferMgr) Insert(blk *kfile.BlockId) *Buffer {
-	if buff, exists := bm.bufferPool[blk]; exists {
-		bm.moveToHead(buff)
-		buff.Pin()
-		return buff
-	}
-
-	if bm.numAvailable == 0 {
-		evictedBuff, err := bm.findAndEvictBuffer()
-		if err != nil {
-			_ = fmt.Errorf("failed to evict buffer: %w", err)
-			return nil
-		}
-
-		delete(bm.bufferPool, evictedBuff.blk)
-	}
-
-	buff := NewBuffer(bm.fm)
-
-	// Add new buffer to pool
-	bm.bufferPool[blk] = buff
-	err := buff.assignToBlock(blk)
-	if err != nil {
-		if !strings.Contains(err.Error(), "EOF") {
-			panic(err)
-		}
-	}
-	bm.moveToHead(buff)
-	buff.Pin()
-	bm.numAvailable--
-
-	return buff
-}
-
-func (bM *BufferMgr) findAndEvictBuffer() (*Buffer, error) {
-	current := bM.lruTail
-
-	for current != nil && current.IsPinned() {
-		current = current.prev
-	}
-
-	if current == nil {
-		return nil, ErrNoUnpinnedBuffers
-	}
-
-	if current.isDirty() {
-		if err := current.Flush(); err != nil {
-			return nil, fmt.Errorf("failed to Flush dirty buffer: %w", err)
-		}
-	}
-
-	return current, nil
-}
-
-func (bM *BufferMgr) Get(blk *kfile.BlockId) *Buffer {
-	if _, exists := bM.bufferPool[blk]; exists {
-		buff := bM.bufferPool[blk]
-		buff.Pin()
-		bM.updateAccessTime(buff)
-		return buff
-	}
-	return nil
-}
-
-func (bM *BufferMgr) updateAccessTime(buff *Buffer) {
-	bM.accessCounter++
-	buff.lastAccessTime = bM.accessCounter
 }
