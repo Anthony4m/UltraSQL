@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sync"
 	"ultraSQL/kfile"
 )
 
@@ -21,6 +22,8 @@ type Buffer struct {
 	Dirty          bool
 	lastAccessTime uint64
 	prev, next     *Buffer
+	refBit         bool
+	mu             sync.Mutex
 }
 
 // NewBuffer ...
@@ -149,4 +152,16 @@ func (b *Buffer) decompressPage(page *kfile.Page) error {
 }
 func (b *Buffer) ModifyingTxID() int {
 	return b.txnum
+}
+
+func (b *Buffer) referenced() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.refBit
+}
+
+func (b *Buffer) setReferenced(ref bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.refBit = ref
 }
