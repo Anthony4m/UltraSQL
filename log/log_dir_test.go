@@ -29,7 +29,8 @@ func TestNewLogMgr(t *testing.T) {
 	}()
 
 	filename := "new_log.db"
-	bm := buffer.NewBufferMgr(fm, 3)
+	policy := buffer.InitLRU(3, fm)
+	bm := buffer.NewBufferMgr(fm, 3, policy)
 	logMgr, err := NewLogMgr(fm, bm, filename)
 	if err != nil {
 		t.Fatalf("Failed to create LogMgr for new log file: %v", err)
@@ -63,8 +64,8 @@ func TestAppend(t *testing.T) {
 		fm.Close()
 		os.RemoveAll(tempDir)
 	}()
-
-	bm := buffer.NewBufferMgr(fm, 3)
+	policy := buffer.InitLRU(3, fm)
+	bm := buffer.NewBufferMgr(fm, 3, policy)
 	logMgr, err := NewLogMgr(fm, bm, "append_test.db")
 	if err != nil {
 		t.Fatalf("Failed to initialize LogMgr: %v", err)
@@ -101,8 +102,8 @@ func TestFlush(t *testing.T) {
 		fm.Close()
 		os.RemoveAll(tempDir)
 	}()
-
-	bm := buffer.NewBufferMgr(fm, 3)
+	policy := buffer.InitLRU(3, fm)
+	bm := buffer.NewBufferMgr(fm, 3, policy)
 	logMgr, err := NewLogMgr(fm, bm, "flush_test.db")
 	if err != nil {
 		t.Fatalf("Failed to initialize LogMgr: %v", err)
@@ -121,7 +122,7 @@ func TestFlush(t *testing.T) {
 	}
 
 	// Read the block to confirm data was written
-	buff := bm.Get(logMgr.currentBlock)
+	buff, _ := bm.Policy.Get(*logMgr.currentBlock)
 	page := buff.Contents()
 	if err != nil {
 		t.Fatalf("Failed to read block after flush: %v", err)
@@ -158,7 +159,8 @@ func TestAppendBoundary(t *testing.T) {
 		fm.Close()
 		os.RemoveAll(tempDir)
 	}()
-	bm := buffer.NewBufferMgr(fm, 3)
+	policy := buffer.InitLRU(3, fm)
+	bm := buffer.NewBufferMgr(fm, 3, policy)
 	logMgr, err := NewLogMgr(fm, bm, "boundary_test.db")
 	if err != nil {
 		t.Fatalf("Failed to initialize LogMgr: %v", err)
@@ -201,8 +203,8 @@ func TestLogMgr(t *testing.T) {
 		fm.Close()
 		os.RemoveAll(tempDir)
 	}()
-
-	bm := buffer.NewBufferMgr(fm, 3)
+	policy := buffer.InitLRU(3, fm)
+	bm := buffer.NewBufferMgr(fm, 3, policy)
 	// Test file creation and appending
 	filename := "test.db"
 	_, err = fm.Append(filename)

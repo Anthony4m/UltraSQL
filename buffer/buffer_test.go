@@ -22,7 +22,8 @@ func TestBuffer(t *testing.T) {
 		fm.Close()
 		os.RemoveAll(tempDir)
 	}()
-	bm := NewBufferMgr(fm, 3)
+	policy := InitLRU(3, fm)
+	bm := NewBufferMgr(fm, 3, policy)
 	filename := "bufferTest.db"
 	//blk1, _ := fm.Append("bufferTest.db")
 
@@ -96,8 +97,8 @@ func TestNewBufferMgr(t *testing.T) {
 		fm.Close()
 		os.RemoveAll(tempDir)
 	}()
-
-	bufferMgr := NewBufferMgr(fm, 3)
+	policy := InitLRU(3, fm)
+	bufferMgr := NewBufferMgr(fm, 3, policy)
 
 	if bufferMgr.available() != 3 {
 		t.Errorf("Expected 3 available buffers, got %d", bufferMgr.available())
@@ -117,8 +118,8 @@ func TestPinAndUnpin(t *testing.T) {
 		fm.Close()
 		os.RemoveAll(tempDir)
 	}()
-
-	bufferMgr := NewBufferMgr(fm, 2)
+	policy := InitLRU(2, fm)
+	bufferMgr := NewBufferMgr(fm, 2, policy)
 
 	//blk1 := &kfile.BlockId{Filename: "file1", Blknum: 1}
 	//blk2 := &kfile.BlockId{Filename: "file1", Blknum: 2}
@@ -164,8 +165,8 @@ func TestPinTimeout(t *testing.T) {
 		fm.Close()
 		os.RemoveAll(tempDir)
 	}()
-
-	bufferMgr := NewBufferMgr(fm, 1)
+	policy := InitLRU(1, fm)
+	bufferMgr := NewBufferMgr(fm, 1, policy)
 
 	blk1, err := fm.Append("file1")
 	blk2, err := fm.Append("file2")
@@ -203,8 +204,8 @@ func TestFlushAll(t *testing.T) {
 		fm.Close()
 		os.RemoveAll(tempDir)
 	}()
-
-	bufferMgr := NewBufferMgr(fm, 2)
+	policy := InitLRU(2, fm)
+	bufferMgr := NewBufferMgr(fm, 2, policy)
 
 	blk1 := &kfile.BlockId{Filename: "file1", Blknum: 1}
 
@@ -214,7 +215,7 @@ func TestFlushAll(t *testing.T) {
 		t.Fatal("Failed to Pin blk for block 1")
 	}
 
-	bufferMgr.FlushAll(0) // Mock logic to Flush based on txid
+	bufferMgr.Policy.FlushAll(0) // Mock logic to Flush based on txid
 
 	// Verify no crash and potential mock Flush calls
 }
@@ -228,8 +229,9 @@ type DeterministicBufferSimulator struct {
 
 // NewDeterministicBufferSimulator creates a simulator for testing
 func NewDeterministicBufferSimulator(fm *kfile.FileMgr, numbuffs int) *DeterministicBufferSimulator {
+	policy := InitLRU(numbuffs, fm)
 	return &DeterministicBufferSimulator{
-		bufferMgr: NewBufferMgr(fm, numbuffs),
+		bufferMgr: NewBufferMgr(fm, numbuffs, policy),
 		testLog:   make([]string, 0),
 	}
 }
@@ -308,8 +310,8 @@ func BenchmarkBufferManagerConcurrency(b *testing.B) {
 		fm.Close()
 		os.RemoveAll(tempDir)
 	}()
-
-	bufferMgr := NewBufferMgr(fm, 10)
+	policy := InitLRU(10, fm)
+	bufferMgr := NewBufferMgr(fm, 10, policy)
 
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
@@ -392,7 +394,8 @@ func TestDeterministicBufferOverflow(t *testing.T) {
 
 	// Create a simulator with very limited buffers
 	bufferCount := 2
-	bufferMgr := NewBufferMgr(fm, bufferCount)
+	policy := InitLRU(bufferCount, fm)
+	bufferMgr := NewBufferMgr(fm, bufferCount, policy)
 
 	// Create more Pin requests than available buffers
 	blocks := make([]*kfile.BlockId, bufferCount+6)

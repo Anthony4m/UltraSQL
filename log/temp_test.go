@@ -23,7 +23,8 @@ func TestLogMgrAppend(t *testing.T) {
 		fm.Close()
 		os.RemoveAll(tempDir)
 	}()
-	bm := buffer.NewBufferMgr(fm, 3)
+	policy := buffer.InitLRU(3, fm)
+	bm := buffer.NewBufferMgr(fm, 3, policy)
 	filename := "test.db"
 	_, err = fm.Append(filename)
 	if err != nil {

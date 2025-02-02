@@ -78,7 +78,8 @@ func TestLogIterator_EmptyIterator(t *testing.T) {
 	page := kfile.NewSlottedPage(fm.BlockSize())
 	err := fm.Write(blk, page)
 	require.NoError(t, err)
-	bm := buffer.NewBufferMgr(fm, 3)
+	policy := buffer.InitLRU(3, fm)
+	bm := buffer.NewBufferMgr(fm, 3, policy)
 	iterator, _ := NewLogIterator(fm, bm, blk)
 
 	assert.False(t, iterator.HasNext())
@@ -111,7 +112,8 @@ func TestMoveToBlock(t *testing.T) {
 	err = page.InsertCell(cell)
 	buff := buffer.NewBuffer(fm)
 	buff.SetContents(page)
-	bm := buffer.NewBufferMgr(fm, 3)
+	policy := buffer.InitLRU(3, fm)
+	bm := buffer.NewBufferMgr(fm, 3, policy)
 	// Initialize LogIterator and move to block
 	iter, _ := NewLogIterator(fm, bm, block)
 	err = iter.moveToBlock(block)
