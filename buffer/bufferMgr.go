@@ -21,7 +21,7 @@ type BufferMgr struct {
 	numAvailable int
 	availableCh  chan struct{}
 
-	// LRU/Access tracking fields
+	// Access tracking fields (for LRU or similar).
 	accessCounter uint64
 
 	// Optional statistics.
@@ -39,68 +39,73 @@ func NewBufferMgr(fm *kfile.FileMgr, numBuffs int, policy EvictionPolicy) *Buffe
 	}
 }
 
-// Pin retrieves (or creates) a Buffer for the given block, possibly blocking until one is available.
-// The block is looked up (or allocated) using the provided eviction policy.
+// Pin attempts to retrieve a buffer for the given block, possibly blocking until a buffer becomes available.
+// If no buffers become available within MaxTime, an error is returned.
 func (bm *BufferMgr) Pin(blk *kfile.BlockId) (*Buffer, error) {
 	startTime := time.Now()
 
-	// Main loop: try to obtain a buffer until success or timeout.
+	// Main loop: retry until success or timeout.
 	for {
 		bm.mu.Lock()
 
-		// Try to get the buffer from the policy.
-		buff, err := bm.Policy.Get(*blk) // returns pinned buffer if found.
-		if err != nil {
-			// Log the error (here we simply print it).
-			fmt.Printf("warning: error getting buffer from policy: %v\n", err)
-		} else {
+		buff, getErr := bm.Policy.Get(*blk)
+		switch {
+		case getErr != nil:
+			// Log the error from Policy.Get but don’t necessarily return unless it's critical.
+			// The 'not found' scenario might not be an error per se; it could simply return (nil, nil).
+			fmt.Printf("debug: Policy.Get returned an error: %v\n", getErr)
+
+		case buff != nil:
+			// We found the buffer in the policy -> It's a "hit".
 			bm.hitCounter++
-		}
-		// If not found and there is availability, allocate a new buffer.
-		if buff == nil && bm.numAvailable > 0 {
-			bm.missCounter++
-			buff, err = bm.Policy.AllocateBufferForBlock(*blk)
-			if err != nil {
-				bm.mu.Unlock()
-				return nil, fmt.Errorf("failed to allocate buffer: %w", err)
-			}
-			bm.numAvailable--
-		}
-		if buff != nil {
 			bm.mu.Unlock()
 			return buff, nil
 		}
 
-		// Calculate remaining wait time.
+		// Not found in the policy, so we need a new buffer if one is available.
+		if buff == nil && bm.numAvailable > 0 {
+			bm.missCounter++
+			newBuff, allocErr := bm.Policy.AllocateBufferForBlock(*blk)
+			if allocErr != nil {
+				bm.mu.Unlock()
+				return nil, fmt.Errorf("failed to allocate buffer: %w", allocErr)
+			}
+			bm.numAvailable--
+			bm.mu.Unlock()
+			return newBuff, nil
+		}
+
+		// If we reach here, it means buff == nil and bm.numAvailable == 0.
+
+		// Check if we’ve timed out.
 		remaining := MaxTime - time.Since(startTime)
 		if remaining <= 0 {
 			bm.mu.Unlock()
 			return nil, fmt.Errorf("no buffers available after waiting %v", MaxTime)
 		}
-		// Release lock and wait for a buffer to become free.
+
+		// Wait for a buffer to become free. Unlock while waiting.
 		bm.mu.Unlock()
 		select {
 		case <-bm.availableCh:
-			// A signal indicates a buffer is available; retry.
+			// A buffer might have been freed; loop again.
 		case <-time.After(remaining):
 			return nil, fmt.Errorf("no buffers available after waiting %v", MaxTime)
 		}
 	}
 }
 
-// Unpin decrements the pin count of the given buffer. If the buffer becomes unpinned,
-// it increments bm.numAvailable and signals availableCh that a buffer is free.
+// Unpin decrements the pin count of the given buffer. If it becomes unpinned,
+// bm.numAvailable is incremented, and a signal is sent on bm.availableCh to notify waiters.
 func (bm *BufferMgr) Unpin(buff *Buffer) {
 	bm.mu.Lock()
 	defer bm.mu.Unlock()
 
-	// Unpin the buffer.
 	if err := buff.Unpin(); err != nil {
 		// Log a warning rather than panicking.
 		fmt.Printf("warning: Unpin called on an unpinned buffer: %v\n", err)
 		return
 	}
-	// If the buffer is now unpinned, update availability.
 	if !buff.Pinned() {
 		bm.numAvailable++
 		select {
@@ -110,13 +115,14 @@ func (bm *BufferMgr) Unpin(buff *Buffer) {
 	}
 }
 
-// updateAccessTime updates a buffer's last access time using the global access counter.
+// updateAccessTime sets a buffer’s lastAccessTime using a global counter,
+// which can be used by LRU or other replacement policies.
 func (bm *BufferMgr) updateAccessTime(buff *Buffer) {
 	bm.accessCounter++
 	buff.lastAccessTime = bm.accessCounter
 }
 
-// available returns the number of available (unpinned) buffers.
+// available returns the current count of available (unpinned) buffers.
 func (bm *BufferMgr) available() int {
 	bm.mu.RLock()
 	defer bm.mu.RUnlock()
