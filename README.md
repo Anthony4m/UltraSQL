@@ -87,6 +87,7 @@ func main() {
 ├── log/                   # Logging utilities
 ├── mydb/                  # Core database engine and operations
 ├── utils/                 # Shared utility functions and helpers
+├── buffer/                 # Contains buffer and cache
 ├── .gitignore             # Specifies files ignored by Git
 ├── README.md              # Project overview and usage instructions
 ├── go.mod                 # Go module dependencies
