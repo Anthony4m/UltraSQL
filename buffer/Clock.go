@@ -143,7 +143,7 @@ func (c *Clock) Evict() (*Buffer, error) {
 }
 
 // FlushAll implements the EvictionPolicy interface.
-func (c *Clock) FlushAll(txnum int) {
+func (c *Clock) FlushAll(txnum int64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
