@@ -10,14 +10,14 @@ import (
 
 const MaxTime = 1000 * time.Millisecond
 
-// ErrNoUnpinnedBuffers is returned when no unpinned buffers are available for eviction.
-var ErrNoUnpinnedBuffers = errors.New("no unpinned buffers available for eviction")
+// ErrNoUnpinnedBuffers is returned when no unpinned buffers are Available for eviction.
+var ErrNoUnpinnedBuffers = errors.New("no unpinned buffers Available for eviction")
 
 // BufferMgr manages a pool of buffers and applies an eviction policy.
 type BufferMgr struct {
 	mu           sync.RWMutex
 	fm           *kfile.FileMgr
-	Policy       EvictionPolicy
+	policy       EvictionPolicy
 	numAvailable int
 	availableCh  chan struct{}
 
@@ -32,15 +32,15 @@ type BufferMgr struct {
 // NewBufferMgr creates a new BufferMgr with the specified number of buffers and eviction policy.
 func NewBufferMgr(fm *kfile.FileMgr, numBuffs int, policy EvictionPolicy) *BufferMgr {
 	return &BufferMgr{
-		Policy:       policy,
+		policy:       policy,
 		fm:           fm,
 		numAvailable: numBuffs,
 		availableCh:  make(chan struct{}, numBuffs),
 	}
 }
 
-// Pin attempts to retrieve a buffer for the given block, possibly blocking until a buffer becomes available.
-// If no buffers become available within MaxTime, an error is returned.
+// Pin attempts to retrieve a buffer for the given block, possibly blocking until a buffer becomes Available.
+// If no buffers become Available within MaxTime, an error is returned.
 func (bm *BufferMgr) Pin(blk *kfile.BlockId) (*Buffer, error) {
 	startTime := time.Now()
 
@@ -48,12 +48,12 @@ func (bm *BufferMgr) Pin(blk *kfile.BlockId) (*Buffer, error) {
 	for {
 		bm.mu.Lock()
 
-		buff, getErr := bm.Policy.Get(*blk)
+		buff, getErr := bm.Policy().Get(*blk)
 		switch {
 		case getErr != nil:
-			// Log the error from Policy.Get but don’t necessarily return unless it's critical.
+			// Log the error from policy.Get but don’t necessarily return unless it's critical.
 			// The 'not found' scenario might not be an error per se; it could simply return (nil, nil).
-			fmt.Printf("debug: Policy.Get returned an error: %v\n", getErr)
+			fmt.Printf("debug: policy.Get returned an error: %v\n", getErr)
 
 		case buff != nil:
 			// We found the buffer in the policy -> It's a "hit".
@@ -62,10 +62,10 @@ func (bm *BufferMgr) Pin(blk *kfile.BlockId) (*Buffer, error) {
 			return buff, nil
 		}
 
-		// Not found in the policy, so we need a new buffer if one is available.
+		// Not found in the policy, so we need a new buffer if one is Available.
 		if buff == nil && bm.numAvailable > 0 {
 			bm.missCounter++
-			newBuff, allocErr := bm.Policy.AllocateBufferForBlock(*blk)
+			newBuff, allocErr := bm.Policy().AllocateBufferForBlock(*blk)
 			if allocErr != nil {
 				bm.mu.Unlock()
 				return nil, fmt.Errorf("failed to allocate buffer: %w", allocErr)
@@ -81,7 +81,7 @@ func (bm *BufferMgr) Pin(blk *kfile.BlockId) (*Buffer, error) {
 		remaining := MaxTime - time.Since(startTime)
 		if remaining <= 0 {
 			bm.mu.Unlock()
-			return nil, fmt.Errorf("no buffers available after waiting %v", MaxTime)
+			return nil, fmt.Errorf("no buffers Available after waiting %v", MaxTime)
 		}
 
 		// Wait for a buffer to become free. Unlock while waiting.
@@ -90,7 +90,7 @@ func (bm *BufferMgr) Pin(blk *kfile.BlockId) (*Buffer, error) {
 		case <-bm.availableCh:
 			// A buffer might have been freed; loop again.
 		case <-time.After(remaining):
-			return nil, fmt.Errorf("no buffers available after waiting %v", MaxTime)
+			return nil, fmt.Errorf("no buffers Available after waiting %v", MaxTime)
 		}
 	}
 }
@@ -122,9 +122,14 @@ func (bm *BufferMgr) updateAccessTime(buff *Buffer) {
 	buff.lastAccessTime = bm.accessCounter
 }
 
-// available returns the current count of available (unpinned) buffers.
-func (bm *BufferMgr) available() int {
+// Available returns the current count of Available (unpinned) buffers.
+func (bm *BufferMgr) Available() int {
 	bm.mu.RLock()
 	defer bm.mu.RUnlock()
 	return bm.numAvailable
+}
+
+// Available returns the current count of Available (unpinned) buffers.
+func (bm *BufferMgr) Policy() EvictionPolicy {
+	return bm.policy
 }
