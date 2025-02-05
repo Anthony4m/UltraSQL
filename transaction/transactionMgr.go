@@ -47,11 +47,11 @@ func (t *TransactionMgr) Recover() {
 	t.recoveryMgr.recover()
 }
 
-func (t *TransactionMgr) Pin(blk *kfile.BlockId) {
-	bufferList.Pin(blk)
+func (t *TransactionMgr) Pin(blk kfile.BlockId) {
+	t.bufferList.Pin(blk)
 }
-func (t *TransactionMgr) UnPin(blk *kfile.BlockId) {
-	bufferList.UnPin(blk)
+func (t *TransactionMgr) UnPin(blk kfile.BlockId) {
+	t.bufferList.Unpin(blk)
 }
 
 func (t *TransactionMgr) Size(filename string) int {
@@ -86,13 +86,17 @@ func (t *TransactionMgr) nextTxNumber() int64 {
 
 func (t *TransactionMgr) FindCell(blk kfile.BlockId, key []byte) *kfile.Cell {
 	t.cm.sLock(blk)
-	buff := t.bufferList.getBuffer(blk)
-	return buff.Contents().FindCell(key)
+	buff := t.bufferList.Buffer(blk)
+	cell, _, err := buff.Contents().FindCell(key)
+	if err != nil {
+		return nil
+	}
+	return cell
 }
 
 func (t *TransactionMgr) InsertCell(blk kfile.BlockId, key []byte, val any, okToLog bool) {
 	t.cm.xLock(blk)
-	buff := t.bufferList.getBuffer(blk)
+	buff := t.bufferList.Buffer(blk)
 	lsn := -1
 	if okToLog {
 		lsn = t.rm.setValue(buff, key, val)
@@ -101,5 +105,5 @@ func (t *TransactionMgr) InsertCell(blk kfile.BlockId, key []byte, val any, okTo
 	cell := kfile.NewKVCell(cellKey)
 	p := buff.Contents()
 	p.InsertCell(cell)
-	buff.setModified(txnum, lsn)
+	buff.MarkModified(t.txtnum, lsn)
 }
