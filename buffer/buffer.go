@@ -17,7 +17,7 @@ type Buffer struct {
 	contents       *kfile.SlottedPage
 	blk            *kfile.BlockId
 	pins           int
-	txnum          int
+	txnum          int64
 	lsn            int
 	Dirty          bool
 	lastAccessTime uint64
@@ -48,7 +48,7 @@ func (b *Buffer) Block() *kfile.BlockId {
 	return b.blk
 }
 
-func (b *Buffer) MarkModified(txnum, lsn int) {
+func (b *Buffer) MarkModified(txnum int64, lsn int) {
 	b.txnum = txnum
 	if lsn > 0 {
 		b.lsn = lsn
@@ -150,7 +150,7 @@ func (b *Buffer) decompressPage(page *kfile.Page) error {
 	page.IsCompressed = false
 	return nil
 }
-func (b *Buffer) ModifyingTxID() int {
+func (b *Buffer) ModifyingTxID() int64 {
 	return b.txnum
 }
 

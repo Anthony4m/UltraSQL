@@ -22,7 +22,8 @@ func TestBuffer(t *testing.T) {
 		fm.Close()
 		os.RemoveAll(tempDir)
 	}()
-	policy := InitLRU(3, fm)
+	//policy := InitLRU(3, fm)
+	policy := InitClock(3, fm)
 	bm := NewBufferMgr(fm, 3, policy)
 	filename := "bufferTest.db"
 	//blk1, _ := fm.Append("bufferTest.db")
@@ -97,11 +98,12 @@ func TestNewBufferMgr(t *testing.T) {
 		fm.Close()
 		os.RemoveAll(tempDir)
 	}()
-	policy := InitLRU(3, fm)
+	//policy := InitLRU(3, fm)
+	policy := InitClock(3, fm)
 	bufferMgr := NewBufferMgr(fm, 3, policy)
 
-	if bufferMgr.available() != 3 {
-		t.Errorf("Expected 3 available buffers, got %d", bufferMgr.available())
+	if bufferMgr.Available() != 3 {
+		t.Errorf("Expected 3 Available buffers, got %d", bufferMgr.Available())
 	}
 }
 
@@ -118,7 +120,8 @@ func TestPinAndUnpin(t *testing.T) {
 		fm.Close()
 		os.RemoveAll(tempDir)
 	}()
-	policy := InitLRU(2, fm)
+	policy := InitClock(2, fm)
+	//policy := InitLRU(2, fm)
 	bufferMgr := NewBufferMgr(fm, 2, policy)
 
 	//blk1 := &kfile.BlockId{Filename: "file1", Blknum: 1}
@@ -132,8 +135,8 @@ func TestPinAndUnpin(t *testing.T) {
 	if buf1 == nil {
 		t.Fatal("Failed to Pin blk for block 1")
 	}
-	if bufferMgr.available() != 1 {
-		t.Errorf("Expected 1 available blk, got %d", bufferMgr.available())
+	if bufferMgr.Available() != 1 {
+		t.Errorf("Expected 1 Available blk, got %d", bufferMgr.Available())
 	}
 
 	// Pin second block
@@ -141,14 +144,14 @@ func TestPinAndUnpin(t *testing.T) {
 	if buf2 == nil {
 		t.Fatal("Failed to Pin blk for block 2")
 	}
-	if bufferMgr.available() != 0 {
-		t.Errorf("Expected 0 available buffers, got %d", bufferMgr.available())
+	if bufferMgr.Available() != 0 {
+		t.Errorf("Expected 0 Available buffers, got %d", bufferMgr.Available())
 	}
 
 	// Unpin first block
 	bufferMgr.Unpin(buf1)
-	if bufferMgr.available() != 1 {
-		t.Errorf("Expected 1 available blk after UnPin, got %d", bufferMgr.available())
+	if bufferMgr.Available() != 1 {
+		t.Errorf("Expected 1 Available blk after UnPin, got %d", bufferMgr.Available())
 	}
 }
 
@@ -172,7 +175,7 @@ func TestPinTimeout(t *testing.T) {
 	blk2, err := fm.Append("file2")
 	blk3, err := fm.Append("file3")
 
-	// Pin the only available blk
+	// Pin the only Available blk
 	buf1, _ := bufferMgr.Pin(blk1)
 	if buf1 == nil {
 		t.Fatal("Failed to Pin blk for block 1")
@@ -204,7 +207,8 @@ func TestFlushAll(t *testing.T) {
 		fm.Close()
 		os.RemoveAll(tempDir)
 	}()
-	policy := InitLRU(2, fm)
+	//policy := InitLRU(2, fm)
+	policy := InitClock(2, fm)
 	bufferMgr := NewBufferMgr(fm, 2, policy)
 
 	blk1 := &kfile.BlockId{Filename: "file1", Blknum: 1}
@@ -215,7 +219,7 @@ func TestFlushAll(t *testing.T) {
 		t.Fatal("Failed to Pin blk for block 1")
 	}
 
-	bufferMgr.Policy.FlushAll(0) // Mock logic to Flush based on txid
+	bufferMgr.Policy().FlushAll(0) // Mock logic to Flush based on txid
 
 	// Verify no crash and potential mock Flush calls
 }
@@ -261,9 +265,9 @@ func TestDeterministicBufferAllocation(t *testing.T) {
 	bufferMgr := simulator.bufferMgr
 
 	// Test initial availability
-	initialAvailable := bufferMgr.available()
+	initialAvailable := bufferMgr.Available()
 	if initialAvailable != 5 {
-		t.Fatalf("Expected 5 initial available buffers, got %d", initialAvailable)
+		t.Fatalf("Expected 5 initial Available buffers, got %d", initialAvailable)
 	}
 	// Simulate pinning and unpinning
 	testBlocks := []*kfile.BlockId{
@@ -281,9 +285,9 @@ func TestDeterministicBufferAllocation(t *testing.T) {
 	}
 
 	// Check availability decreased
-	currentAvailable := bufferMgr.available()
+	currentAvailable := bufferMgr.Available()
 	if currentAvailable != 2 {
-		t.Fatalf("Expected 2 available buffers after pinning, got %d", currentAvailable)
+		t.Fatalf("Expected 2 Available buffers after pinning, got %d", currentAvailable)
 	}
 
 	// Unpin buffers
@@ -292,9 +296,9 @@ func TestDeterministicBufferAllocation(t *testing.T) {
 	}
 
 	// Verify availability is back to initial state
-	finalAvailable := bufferMgr.available()
+	finalAvailable := bufferMgr.Available()
 	if finalAvailable != 5 {
-		t.Fatalf("Expected 5 available buffers after unpinning, got %d", finalAvailable)
+		t.Fatalf("Expected 5 Available buffers after unpinning, got %d", finalAvailable)
 	}
 }
 
@@ -373,9 +377,9 @@ func TestDeterministicConcurrentBufferAccess(t *testing.T) {
 	wg.Wait()
 
 	// Verify final blk availability
-	finalAvailable := bufferMgr.available()
+	finalAvailable := bufferMgr.Available()
 	if finalAvailable != 3 {
-		t.Fatalf("Expected 3 available buffers at end, got %d", finalAvailable)
+		t.Fatalf("Expected 3 Available buffers at end, got %d", finalAvailable)
 	}
 }
 
@@ -397,7 +401,7 @@ func TestDeterministicBufferOverflow(t *testing.T) {
 	policy := InitLRU(bufferCount, fm)
 	bufferMgr := NewBufferMgr(fm, bufferCount, policy)
 
-	// Create more Pin requests than available buffers
+	// Create more Pin requests than Available buffers
 	blocks := make([]*kfile.BlockId, bufferCount+6)
 	for i := range blocks {
 		blocks[i] = &kfile.BlockId{
