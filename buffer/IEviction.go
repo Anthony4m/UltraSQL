@@ -13,5 +13,5 @@ type EvictionPolicy interface {
 	// Evict removes a block from the buffer based on the eviction policy.
 	Evict() (*Buffer, error)
 
-	FlushAll(txnum int)
+	FlushAll(txnum int64)
 }
