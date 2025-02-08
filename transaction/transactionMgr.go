@@ -1,6 +1,7 @@
 package transaction
 
 import (
+	"fmt"
 	"sync/atomic"
 	"ultraSQL/buffer"
 	"ultraSQL/kfile"
@@ -47,11 +48,18 @@ func (t *TransactionMgr) Recover() {
 	t.recoveryMgr.recover()
 }
 
-func (t *TransactionMgr) Pin(blk kfile.BlockId) {
-	t.bufferList.Pin(blk)
+func (t *TransactionMgr) Pin(blk kfile.BlockId) error {
+	err := t.bufferList.Pin(blk)
+	if err != nil {
+		return fmt.Errorf("failed to pin block %v: %w", blk, err)
+	}
+	return nil
 }
-func (t *TransactionMgr) UnPin(blk kfile.BlockId) {
-	t.bufferList.Unpin(blk)
+func (t *TransactionMgr) UnPin(blk kfile.BlockId) error {
+	err := t.bufferList.Unpin(blk)
+	if err != nil {
+		return fmt.Errorf("failed to pin block %v: %w", blk, err)
+	}
 }
 
 func (t *TransactionMgr) Size(filename string) int {
@@ -94,16 +102,20 @@ func (t *TransactionMgr) FindCell(blk kfile.BlockId, key []byte) *kfile.Cell {
 	return cell
 }
 
-func (t *TransactionMgr) InsertCell(blk kfile.BlockId, key []byte, val any, okToLog bool) {
+func (t *TransactionMgr) InsertCell(blk kfile.BlockId, key []byte, val any, okToLog bool) error {
 	t.cm.xLock(blk)
 	buff := t.bufferList.Buffer(blk)
 	lsn := -1
 	if okToLog {
 		lsn = t.rm.setValue(buff, key, val)
 	}
-	cellKey := t.txtnum
+	cellKey := key
 	cell := kfile.NewKVCell(cellKey)
 	p := buff.Contents()
-	p.InsertCell(cell)
+	err := p.InsertCell(cell)
+	if err != nil {
+		return fmt.Errorf("failed to pin block %v: %w", blk, err)
+	}
 	buff.MarkModified(t.txtnum, lsn)
+	return nil
 }
