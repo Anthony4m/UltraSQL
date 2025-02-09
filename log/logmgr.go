@@ -212,3 +212,7 @@ func (lm *LogMgr) ValidateKey(key []byte) bool {
 	generatedKey := lm.GenerateKey()
 	return bytes.Compare(key, generatedKey) == 0
 }
+
+func (lm *LogMgr) Buffer() *buffer.Buffer {
+	return lm.logBuffer
+}
