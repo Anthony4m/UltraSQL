@@ -112,7 +112,7 @@ func (fm *FileMgr) PreallocateFile(blk *BlockId, size int64) error {
 		return err
 	}
 
-	filename := blk.GetFileName()
+	filename := blk.FileName()
 	if err := fm.validatePermissions(); err != nil {
 		return err
 	}
@@ -125,7 +125,7 @@ func (fm *FileMgr) validatePreallocationParams(blk *BlockId, size int64) error {
 	if size%int64(fm.blocksize) != 0 {
 		return fmt.Errorf("size must be a multiple of blocksize %d", fm.blocksize)
 	}
-	if blk.GetFileName() == "" {
+	if blk.FileName() == "" {
 		return fmt.Errorf("invalid filename")
 	}
 	return nil
@@ -193,14 +193,14 @@ func (fm *FileMgr) Read(blk *BlockId, p *SlottedPage) error {
 	fm.mutex.RLock()
 	defer fm.mutex.RUnlock()
 
-	f, err := fm.getFile(blk.GetFileName())
+	f, err := fm.getFile(blk.FileName())
 	if err != nil {
 		return fmt.Errorf("failed to get file for block %v: %w", blk, err)
 	}
 
 	offset := int64(blk.Number() * fm.blocksize)
 	if _, err = f.Seek(offset, io.SeekStart); err != nil {
-		return fmt.Errorf(seekErrFormat, offset, blk.GetFileName(), err)
+		return fmt.Errorf(seekErrFormat, offset, blk.FileName(), err)
 	}
 	bytesRead, err := f.Read(p.Contents())
 	if err != nil {
@@ -224,14 +224,14 @@ func (fm *FileMgr) Write(blk *BlockId, p *SlottedPage) error {
 	fm.mutex.Lock()
 	defer fm.mutex.Unlock()
 
-	f, err := fm.getFile(blk.GetFileName())
+	f, err := fm.getFile(blk.FileName())
 	if err != nil {
 		return fmt.Errorf("failed to get file for block %v: %w", blk, err)
 	}
 
 	offset := int64(blk.Number() * fm.blocksize)
 	if _, err = f.Seek(offset, io.SeekStart); err != nil {
-		return fmt.Errorf(seekErrFormat, offset, blk.GetFileName(), err)
+		return fmt.Errorf(seekErrFormat, offset, blk.FileName(), err)
 	}
 	bytesWritten, err := f.Write(p.Contents())
 	if err != nil {
@@ -241,7 +241,7 @@ func (fm *FileMgr) Write(blk *BlockId, p *SlottedPage) error {
 		return fmt.Errorf("incomplete write: expected %d bytes, wrote %d", fm.blocksize, bytesWritten)
 	}
 	if err = f.Sync(); err != nil {
-		return fmt.Errorf("failed to sync file %s: %w", blk.GetFileName(), err)
+		return fmt.Errorf("failed to sync file %s: %w", blk.FileName(), err)
 	}
 
 	fm.blocksWritten++
@@ -379,7 +379,7 @@ func (fm *FileMgr) WriteLog() []ReadWriteLogEntry {
 
 // ensureFileSize ensures the file has at least the required number of blocks.
 func (fm *FileMgr) ensureFileSize(blk *BlockId, requiredBlocks int) error {
-	currentBlocks, err := fm.Length(blk.GetFileName())
+	currentBlocks, err := fm.Length(blk.FileName())
 	if err != nil {
 		return err
 	}
@@ -399,7 +399,7 @@ func (fm *FileMgr) RenameFile(blk *BlockId, newFileName string) error {
 		return fmt.Errorf("invalid new filename: %s", newFileName)
 	}
 
-	oldFileName := blk.GetFileName()
+	oldFileName := blk.FileName()
 
 	// Close the old file if it is open.
 	fm.openFilesLock.Lock()

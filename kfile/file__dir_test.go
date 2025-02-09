@@ -46,8 +46,8 @@ func TestBlock(t *testing.T) {
 		Blknum := 5
 		blk := NewBlockId(Filename, Blknum)
 
-		if blk.GetFileName() != Filename {
-			t.Errorf("Expected Filename %s, got %s", Filename, blk.GetFileName())
+		if blk.FileName() != Filename {
+			t.Errorf("Expected Filename %s, got %s", Filename, blk.FileName())
 		}
 
 		if blk.Number() != Blknum {
@@ -126,13 +126,13 @@ func TestBlock(t *testing.T) {
 
 		// Test NextBlock
 		next := blk.NextBlock()
-		if next.Number() != 6 || next.GetFileName() != "test.db" {
+		if next.Number() != 6 || next.FileName() != "test.db" {
 			t.Error("NextBlock returned incorrect block")
 		}
 
 		// Test PrevBlock
 		prev := blk.PrevBlock()
-		if prev.Number() != 4 || prev.GetFileName() != "test.db" {
+		if prev.Number() != 4 || prev.FileName() != "test.db" {
 			t.Error("PrevBlock returned incorrect block")
 		}
 
@@ -372,8 +372,8 @@ func TestBlockId(t *testing.T) {
 		blknum := 5
 		blk := NewBlockId(filename, blknum)
 
-		if blk.GetFileName() != filename {
-			t.Errorf("Expected Filename %s, got %s", filename, blk.GetFileName())
+		if blk.FileName() != filename {
+			t.Errorf("Expected Filename %s, got %s", filename, blk.FileName())
 		}
 
 		if blk.Number() != blknum {
@@ -448,12 +448,12 @@ func TestBlockId(t *testing.T) {
 		blk := NewBlockId("test.db", 5)
 
 		next := blk.NextBlock()
-		if next.Number() != 6 || next.GetFileName() != "test.db" {
+		if next.Number() != 6 || next.FileName() != "test.db" {
 			t.Error("NextBlock returned incorrect block")
 		}
 
 		prev := blk.PrevBlock()
-		if prev.Number() != 4 || prev.GetFileName() != "test.db" {
+		if prev.Number() != 4 || prev.FileName() != "test.db" {
 			t.Error("PrevBlock returned incorrect block")
 		}
 
@@ -779,7 +779,7 @@ func TestFileRename(t *testing.T) {
 		t.Errorf("Could not rename file %s", err)
 	}
 	want := new_file
-	got := blk.GetFileName()
+	got := blk.FileName()
 	if want != got {
 		t.Errorf("want %s but got %s", want, got)
 	}
