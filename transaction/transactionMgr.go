@@ -4,15 +4,17 @@ import (
 	"fmt"
 	"sync/atomic"
 	"ultraSQL/buffer"
+	"ultraSQL/concurrency"
 	"ultraSQL/kfile"
 	"ultraSQL/log"
+	"ultraSQL/recovery"
 )
 
 type TransactionMgr struct {
 	nextTxNum  int64
 	EndOfFile  int
-	rm         *RecoveryMgr
-	cm         *ConcurrencyMgr
+	rm         *recovery.RecoveryMgr
+	cm         *concurrency.ConcurrencyMgr
 	bm         *buffer.BufferMgr
 	fm         *kfile.FileMgr
 	txtnum     int64
@@ -25,8 +27,8 @@ func NewTransaction(fm *kfile.FileMgr, lm *log.LogMgr, bm *buffer.BufferMgr) *Tr
 		bm: bm,
 	}
 	tx.nextTxNum = tx.nextTxNumber()
-	tx.rm = NewRecoveryMgr(tx, tx.txtnum, lm, bm)
-	tx.cm = NewConcurrencyMgr()
+	tx.rm = recovery.NewRecoveryMgr(tx, tx.txtnum, lm, bm)
+	tx.cm = concurrency.NewConcurrencyMgr()
 	tx.bufferList = NewBufferList(bm)
 	return tx
 }
@@ -34,7 +36,7 @@ func NewTransaction(fm *kfile.FileMgr, lm *log.LogMgr, bm *buffer.BufferMgr) *Tr
 func (t *TransactionMgr) Commit() {
 	t.rm.Commit()
 	t.cm.Release()
-	t.bufferlist.UnpinAll()
+	t.bufferList.UnpinAll()
 }
 
 func (t *TransactionMgr) Rollback() {
@@ -45,7 +47,7 @@ func (t *TransactionMgr) Rollback() {
 
 func (t *TransactionMgr) Recover() {
 	t.bm.Policy().FlushAll(t.txtnum)
-	t.recoveryMgr.recover()
+	t.rm.Recover()
 }
 
 func (t *TransactionMgr) Pin(blk kfile.BlockId) error {
@@ -60,21 +62,25 @@ func (t *TransactionMgr) UnPin(blk kfile.BlockId) error {
 	if err != nil {
 		return fmt.Errorf("failed to pin block %v: %w", blk, err)
 	}
+	return nil
 }
 
-func (t *TransactionMgr) Size(filename string) int {
+func (t *TransactionMgr) Size(filename string) (int, error) {
 	dummyblk := kfile.NewBlockId(filename, t.EndOfFile)
-	t.cm.sLock(dummyblk)
+	err := t.cm.SLock(*dummyblk)
+	if err != nil {
+		return 0, fmt.Errorf("an error occured when acquiring lock %s", err)
+	}
 	fileLength, err := t.fm.LengthLocked(filename)
 	if err != nil {
-		return 0
+		return 0, fmt.Errorf("an error occured when acquiring file length %s", err)
 	}
-	return fileLength
+	return fileLength, nil
 }
 
 func (t *TransactionMgr) append(filename string) *kfile.BlockId {
 	dummyblk := kfile.NewBlockId(filename, t.EndOfFile)
-	t.cm.xLock(dummyblk)
+	t.cm.XLock(*dummyblk)
 	blk, err := t.fm.Append(filename)
 	if err != nil {
 		return nil
@@ -93,7 +99,7 @@ func (t *TransactionMgr) nextTxNumber() int64 {
 }
 
 func (t *TransactionMgr) FindCell(blk kfile.BlockId, key []byte) *kfile.Cell {
-	t.cm.sLock(blk)
+	t.cm.SLock(blk)
 	buff := t.bufferList.Buffer(blk)
 	cell, _, err := buff.Contents().FindCell(key)
 	if err != nil {
@@ -103,16 +109,20 @@ func (t *TransactionMgr) FindCell(blk kfile.BlockId, key []byte) *kfile.Cell {
 }
 
 func (t *TransactionMgr) InsertCell(blk kfile.BlockId, key []byte, val any, okToLog bool) error {
-	t.cm.xLock(blk)
+	t.cm.XLock(blk)
 	buff := t.bufferList.Buffer(blk)
 	lsn := -1
+	var err error
 	if okToLog {
-		lsn = t.rm.setValue(buff, key, val)
+		lsn, err = t.rm.SetCellValue(buff, key, val)
+		if err != nil {
+			return nil
+		}
 	}
 	cellKey := key
 	cell := kfile.NewKVCell(cellKey)
 	p := buff.Contents()
-	err := p.InsertCell(cell)
+	err = p.InsertCell(cell)
 	if err != nil {
 		return fmt.Errorf("failed to pin block %v: %w", blk, err)
 	}
