@@ -4,22 +4,21 @@ import (
 	"fmt"
 	"ultraSQL/buffer"
 	"ultraSQL/log"
-	"ultraSQL/log_record"
-	"ultraSQL/transaction"
+	"ultraSQL/txinterface"
 )
 
 // RecoveryMgr manages the logging and recovery for a given transaction.
 type RecoveryMgr struct {
 	lm    *log.LogMgr
 	bm    *buffer.BufferMgr
-	tx    *transaction.TransactionMgr
+	tx    txinterface.TxInterface
 	txNum int64
 }
 
 // NewRecoveryMgr is analogous to the Java constructor:
 //
 //	public RecoveryMgr(Transaction tx, int txnum, LogMgr lm, BufferMgr bm)
-func NewRecoveryMgr(tx *transaction.TransactionMgr, txNum int64, lm *log.LogMgr, bm *buffer.BufferMgr) *RecoveryMgr {
+func NewRecoveryMgr(tx txinterface.TxInterface, txNum int64, lm *log.LogMgr, bm *buffer.BufferMgr) *RecoveryMgr {
 	rm := &RecoveryMgr{
 		tx:    tx,
 		txNum: txNum,

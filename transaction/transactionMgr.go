@@ -129,3 +129,8 @@ func (t *TransactionMgr) InsertCell(blk kfile.BlockId, key []byte, val any, okTo
 	buff.MarkModified(t.txtnum, lsn)
 	return nil
 }
+
+// GetTxNum is required by the TxInterface.
+func (t *TransactionMgr) GetTxNum() int64 {
+	return t.nextTxNum
+}
