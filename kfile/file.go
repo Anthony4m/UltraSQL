@@ -23,7 +23,7 @@ func NewBlockId(filename string, blknum int) *BlockId {
 	}
 }
 
-func (b *BlockId) GetFileName() string {
+func (b *BlockId) FileName() string {
 	return b.Filename
 }
 

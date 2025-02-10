@@ -69,7 +69,7 @@ func NewLogMgr(fm *kfile.FileMgr, bm *buffer.BufferMgr, logFile string) (*LogMgr
 			return nil, &Error{Op: "new", Err: fmt.Errorf("failed to append initial block: %w", err)}
 		}
 		// Inform the buffer manager that this block is in use.
-		lm.bm.Policy.AllocateBufferForBlock(*lm.currentBlock)
+		lm.bm.Policy().AllocateBufferForBlock(*lm.currentBlock)
 	} else {
 		// Otherwise, set the current block as the last block.
 		lm.currentBlock = kfile.NewBlockId(logFile, lm.logsize-1)
@@ -164,7 +164,7 @@ func (lm *LogMgr) Append(logrec []byte) (int, []byte, error) {
 				return 0, nil, &Error{Op: "append", Err: fmt.Errorf("failed to append new block: %w", err)}
 			}
 			// You may want to inform the buffer manager about the new block.
-			lm.bm.Policy.AllocateBufferForBlock(*lm.currentBlock)
+			lm.bm.Policy().AllocateBufferForBlock(*lm.currentBlock)
 			// Try inserting again into the new log page.
 			logPage = lm.logBuffer.Contents()
 			if err = logPage.InsertCell(cell); err != nil {
@@ -211,4 +211,8 @@ func (lm *LogMgr) ValidateKey(key []byte) bool {
 	// Depending on your requirements, you might instead check for format, prefix, etc.
 	generatedKey := lm.GenerateKey()
 	return bytes.Compare(key, generatedKey) == 0
+}
+
+func (lm *LogMgr) Buffer() *buffer.Buffer {
+	return lm.logBuffer
 }

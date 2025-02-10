@@ -43,7 +43,7 @@ func (it *LogIterator) Next() ([]byte, error) {
 			// strictly speaking, we have no next record
 			return nil, fmt.Errorf("no more records in block 0")
 		}
-		newBlk := kfile.NewBlockId(it.blk.GetFileName(), it.blk.Number()-1)
+		newBlk := kfile.NewBlockId(it.blk.FileName(), it.blk.Number()-1)
 		if err := it.moveToBlock(newBlk); err != nil {
 			return nil, err
 		}
