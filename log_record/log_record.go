@@ -7,7 +7,7 @@ import (
 	"ultraSQL/kfile"
 	_ "ultraSQL/kfile"
 	"ultraSQL/log"
-	"ultraSQL/transaction"
+	"ultraSQL/txinterface"
 )
 
 // Example op code if you're not using separate ones.
@@ -46,7 +46,7 @@ func (rec *UnifiedUpdateRecord) TxNumber() int64 {
 }
 
 // Undo reverts the page/slot to oldBytes
-func (rec *UnifiedUpdateRecord) Undo(tx *transaction.TransactionMgr) {
+func (rec *UnifiedUpdateRecord) Undo(tx txinterface.TxInterface) {
 	// 1) Pin or fetch the buffer for rec.blkFile, rec.blkNum
 	// 2) Cast to SlottedPage
 	// 3) Overwrite the cell at rec.slotIndex with oldBytes
