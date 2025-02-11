@@ -5,158 +5,175 @@ import (
 	"encoding/binary"
 	"fmt"
 	"ultraSQL/kfile"
-	_ "ultraSQL/kfile"
 	"ultraSQL/log"
-	"ultraSQL/txinterface"
 )
 
-// Example op code if you're not using separate ones.
-const UNIFIEDUPDATE = 100
+const (
+	UNIFIEDUPDATE = 5 // Add this with other log record type constants
+)
 
 type UnifiedUpdateRecord struct {
-	txNum    int64
-	blkFile  string
-	blkNum   int
+	txnum    int64
+	blk      kfile.BlockId
 	key      []byte
 	oldBytes []byte
 	newBytes []byte
 }
 
-func WriteUnifiedUpdateLogRecord(
-	lm *log.LogMgr,
-	txNum int64,
-	blk *kfile.BlockId,
-	key []byte,
-	oldBytes []byte,
-	newBytes []byte,
-) int {
-	// Implementation up to you; typically you’d:
-	// 1) Create a record structure (e.g. UnifiedUpdateRecord).
-	// 2) Serialize txNum, block info, slotIndex, oldBytes, newBytes.
-	// 3) Append to log manager, returning the LSN.
-	return 0 // placeholder
-}
-
-// Ensure it satisfies the LogRecord transaction_interface
-func (rec *UnifiedUpdateRecord) Op() int {
-	return UNIFIEDUPDATE
-}
-func (rec *UnifiedUpdateRecord) TxNumber() int64 {
-	return rec.txNum
-}
-
-// Undo reverts the page/slot to oldBytes
-func (rec *UnifiedUpdateRecord) Undo(tx txinterface.TxInterface) {
-	// 1) Pin or fetch the buffer for rec.blkFile, rec.blkNum
-	// 2) Cast to SlottedPage
-	// 3) Overwrite the cell at rec.slotIndex with oldBytes
-	fmt.Printf("Undoing unified update: restoring old cell bytes for tx=%d slot=%d\n", rec.txNum, rec.slotIndex)
-	// ... actual code ...
-}
-
-// Serialize the record to bytes
-func (rec *UnifiedUpdateRecord) ToBytes() []byte {
-	buf := new(bytes.Buffer)
-	// 1. Op code
-	_ = binary.Write(buf, binary.BigEndian, int32(UNIFIEDUPDATE))
-	// 2. txNum
-	_ = binary.Write(buf, binary.BigEndian, rec.txNum)
-
-	// 3. block info
-	writeString(buf, rec.blkFile)
-	_ = binary.Write(buf, binary.BigEndian, int32(rec.blkNum))
-	_ = binary.Write(buf, binary.BigEndian, int32(rec.slotIndex))
-
-	// 4. oldBytes
-	writeBytes(buf, rec.oldBytes)
-	// 5. newBytes
-	writeBytes(buf, rec.newBytes)
-	return buf.Bytes()
-}
-
-// parse UnifiedUpdateRecord from bytes
+// FromBytesUnifiedUpdate creates a UnifiedUpdateRecord from raw bytes
 func FromBytesUnifiedUpdate(data []byte) (*UnifiedUpdateRecord, error) {
-	buf := bytes.NewReader(data)
+	buf := bytes.NewBuffer(data)
 
-	var op int32
-	if err := binary.Read(buf, binary.BigEndian, &op); err != nil {
-		return nil, err
-	}
-	if op != UNIFIEDUPDATE {
-		return nil, fmt.Errorf("not a unified update record")
+	// Skip past the record type
+	if err := binary.Read(buf, binary.BigEndian, new(int32)); err != nil {
+		return nil, fmt.Errorf("failed to read record type: %w", err)
 	}
 
-	var txNum int64
-	if err := binary.Read(buf, binary.BigEndian, &txNum); err != nil {
-		return nil, err
+	// Read transaction number
+	var txnum int64
+	if err := binary.Read(buf, binary.BigEndian, &txnum); err != nil {
+		return nil, fmt.Errorf("failed to read transaction number: %w", err)
 	}
 
-	blkFile, err := readString(buf)
-	if err != nil {
-		return nil, err
+	// Read filename length
+	var filenameLen uint32
+	if err := binary.Read(buf, binary.BigEndian, &filenameLen); err != nil {
+		return nil, fmt.Errorf("failed to read filename length: %w", err)
 	}
 
-	var blkNum int32
+	// Read filename
+	filename := make([]byte, filenameLen)
+	if _, err := buf.Read(filename); err != nil {
+		return nil, fmt.Errorf("failed to read filename: %w", err)
+	}
+
+	// Read block number
+	var blkNum int
 	if err := binary.Read(buf, binary.BigEndian, &blkNum); err != nil {
-		return nil, err
-	}
-	var slotIndex int32
-	if err := binary.Read(buf, binary.BigEndian, &slotIndex); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to read block number: %w", err)
 	}
 
-	oldBytes, err := readBytes(buf)
-	if err != nil {
-		return nil, err
+	// Read key length
+	var keyLen uint32
+	if err := binary.Read(buf, binary.BigEndian, &keyLen); err != nil {
+		return nil, fmt.Errorf("failed to read key length: %w", err)
 	}
-	newBytes, err := readBytes(buf)
-	if err != nil {
-		return nil, err
+
+	// Read key
+	key := make([]byte, keyLen)
+	if _, err := buf.Read(key); err != nil {
+		return nil, fmt.Errorf("failed to read key: %w", err)
 	}
+
+	// Read old value length
+	var oldValueLen uint32
+	if err := binary.Read(buf, binary.BigEndian, &oldValueLen); err != nil {
+		return nil, fmt.Errorf("failed to read old value length: %w", err)
+	}
+
+	// Read old value
+	oldBytes := make([]byte, oldValueLen)
+	if _, err := buf.Read(oldBytes); err != nil {
+		return nil, fmt.Errorf("failed to read old value: %w", err)
+	}
+
+	// Read new value length
+	var newValueLen uint32
+	if err := binary.Read(buf, binary.BigEndian, &newValueLen); err != nil {
+		return nil, fmt.Errorf("failed to read new value length: %w", err)
+	}
+
+	// Read new value
+	newBytes := make([]byte, newValueLen)
+	if _, err := buf.Read(newBytes); err != nil {
+		return nil, fmt.Errorf("failed to read new value: %w", err)
+	}
+
+	// Create BlockId
+	blk := kfile.NewBlockId(string(filename), blkNum)
 
 	return &UnifiedUpdateRecord{
-		txNum:     txNum,
-		blkFile:   blkFile,
-		blkNum:    int(blkNum),
-		slotIndex: int(slotIndex),
-		oldBytes:  oldBytes,
-		newBytes:  newBytes,
+		txnum:    txnum,
+		blk:      *blk,
+		key:      key,
+		oldBytes: oldBytes,
+		newBytes: newBytes,
 	}, nil
 }
 
-// Helpers for writing/reading strings/bytes:
+func (r *UnifiedUpdateRecord) ToBytes() []byte {
+	var buf bytes.Buffer
 
-func writeString(buf *bytes.Buffer, s string) {
-	writeBytes(buf, []byte(s))
+	// Write record type
+	if err := binary.Write(&buf, binary.BigEndian, int32(UNIFIEDUPDATE)); err != nil {
+		return nil
+	}
+
+	// Write transaction number
+	if err := binary.Write(&buf, binary.BigEndian, r.txnum); err != nil {
+		return nil
+	}
+
+	// Write filename length and filename
+	filename := r.blk.FileName()
+	filenameBytes := []byte(filename)
+	if err := binary.Write(&buf, binary.BigEndian, uint32(len(filenameBytes))); err != nil {
+		return nil
+	}
+	if _, err := buf.Write(filenameBytes); err != nil {
+		return nil
+	}
+
+	// Write block number
+	if err := binary.Write(&buf, binary.BigEndian, r.blk.Number()); err != nil {
+		return nil
+	}
+
+	// Write key length and key
+	if err := binary.Write(&buf, binary.BigEndian, uint32(len(r.key))); err != nil {
+		return nil
+	}
+	if _, err := buf.Write(r.key); err != nil {
+		return nil
+	}
+
+	// Write old value length and bytes
+	if err := binary.Write(&buf, binary.BigEndian, uint32(len(r.oldBytes))); err != nil {
+		return nil
+	}
+	if _, err := buf.Write(r.oldBytes); err != nil {
+		return nil
+	}
+
+	// Write new value length and bytes
+	if err := binary.Write(&buf, binary.BigEndian, uint32(len(r.newBytes))); err != nil {
+		return nil
+	}
+	if _, err := buf.Write(r.newBytes); err != nil {
+		return nil
+	}
+
+	return buf.Bytes()
 }
-func readString(buf *bytes.Reader) (string, error) {
-	b, err := readBytes(buf)
+
+// WriteToLog writes a unified update record to the log and returns the LSN
+func WriteToLog(lm log.LogMgr, txnum int64, blk kfile.BlockId, key []byte, oldBytes []byte, newBytes []byte) int {
+	record := &UnifiedUpdateRecord{
+		txnum:    txnum,
+		blk:      blk,
+		key:      key,
+		oldBytes: oldBytes,
+		newBytes: newBytes,
+	}
+
+	// Write directly to log manager
+	lsn, _, err := lm.Append(record.ToBytes())
 	if err != nil {
-		return "", err
+		return -1
 	}
-	return string(b), nil
+	return lsn
 }
-func writeBytes(buf *bytes.Buffer, data []byte) {
-	_ = binary.Write(buf, binary.BigEndian, int32(len(data)))
-	buf.Write(data)
-}
-func readBytes(buf *bytes.Reader) ([]byte, error) {
-	var length int32
-	if err := binary.Read(buf, binary.BigEndian, &length); err != nil {
-		return nil, err
-	}
-	if length < 0 {
-		return nil, fmt.Errorf("negative length")
-	}
-	b := make([]byte, length)
-	n, err := buf.Read(b)
-	if err != nil || n != int(length) {
-		return nil, fmt.Errorf("failed to read bytes")
-	}
-	return b, nil
-}
-
-func CreateLogRecord(data []byte) log.LogRecord {
+func CreateLogRecord(data []byte) *UnifiedUpdateRecord {
 	// Peek at op code
 	if len(data) < 4 {
 		return nil
