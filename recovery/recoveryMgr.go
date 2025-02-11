@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"ultraSQL/buffer"
 	"ultraSQL/log"
+	"ultraSQL/log_record"
 	"ultraSQL/txinterface"
 )
 
@@ -92,7 +93,7 @@ func (r *RecoveryMgr) SetCellValue(buff *buffer.Buffer, key []byte, newVal any) 
 
 	// 6. Write a unified update record to the log: includes txNum, block ID, slotIndex, oldBytes, newBytes.
 	blk := buff.Block() // or any *BlockId if your Buffer returns it
-	lsn := log_record.WriteUnifiedUpdateLogRecord(r.lm, r.txNum, blk, key, oldBytes, newBytes)
+	lsn := log_record.WriteToLog(*r.lm, r.txNum, *blk, key, oldBytes, newBytes)
 
 	// 7. Return the LSN so the caller can handle further flush or keep track of it.
 	return lsn, nil
