@@ -406,7 +406,7 @@ func TestDeterministicBufferOverflow(t *testing.T) {
 	for i := range blocks {
 		blocks[i] = &kfile.BlockId{
 			Filename: "file2",
-			Blknum:   i,
+			Blknum:   int32(i),
 		}
 	}
 

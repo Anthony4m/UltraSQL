@@ -43,7 +43,7 @@ func TestPage(t *testing.T) {
 func TestBlock(t *testing.T) {
 	t.Run("Creation and basic properties", func(t *testing.T) {
 		Filename := "test.db"
-		Blknum := 5
+		var Blknum int32 = 5
 		blk := NewBlockId(Filename, Blknum)
 
 		if blk.FileName() != Filename {
@@ -293,7 +293,7 @@ func TestLengthLocked(t *testing.T) {
 		name           string
 		initialContent []byte
 		blockSize      int
-		expectedBlocks int
+		expectedBlocks int32
 		expectedError  bool
 	}{
 		{
@@ -369,7 +369,7 @@ func TestLengthLocked(t *testing.T) {
 func TestBlockId(t *testing.T) {
 	t.Run("Creation and basic properties", func(t *testing.T) {
 		filename := "test.db"
-		blknum := 5
+		var blknum int32 = 5
 		blk := NewBlockId(filename, blknum)
 
 		if blk.FileName() != filename {

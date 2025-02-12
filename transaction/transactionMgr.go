@@ -10,54 +10,72 @@ import (
 	"ultraSQL/recovery"
 )
 
-type TransactionMgr struct {
+type Mgr struct {
 	nextTxNum  int64
-	EndOfFile  int
-	rm         *recovery.RecoveryMgr
-	cm         *concurrency.ConcurrencyMgr
+	EndOfFile  int32
+	rm         *recovery.Mgr
+	cm         *concurrency.Mgr
 	bm         *buffer.BufferMgr
 	fm         *kfile.FileMgr
-	txtnum     int64
+	txNum      int64
 	bufferList *BufferList
 }
 
-func NewTransaction(fm *kfile.FileMgr, lm *log.LogMgr, bm *buffer.BufferMgr) *TransactionMgr {
-	tx := &TransactionMgr{
+func NewTransaction(fm *kfile.FileMgr, lm *log.LogMgr, bm *buffer.BufferMgr) *Mgr {
+	tx := &Mgr{
 		fm: fm,
 		bm: bm,
 	}
 	tx.nextTxNum = tx.nextTxNumber()
-	tx.rm = recovery.NewRecoveryMgr(tx, tx.txtnum, lm, bm)
+	tx.rm = recovery.NewRecoveryMgr(tx, tx.txNum, lm, bm)
 	tx.cm = concurrency.NewConcurrencyMgr()
 	tx.bufferList = NewBufferList(bm)
 	return tx
 }
 
-func (t *TransactionMgr) Commit() {
-	t.rm.Commit()
-	t.cm.Release()
+func (t *Mgr) Commit() error {
+	err := t.rm.Commit()
+	if err != nil {
+		return err
+	}
+	err = t.cm.Release()
+	if err != nil {
+		return err
+	}
 	t.bufferList.UnpinAll()
+	return nil
 }
 
-func (t *TransactionMgr) Rollback() {
-	t.rm.Rollback()
-	t.cm.Release()
+func (t *Mgr) Rollback() error {
+	err := t.rm.Rollback()
+	if err != nil {
+		return err
+	}
+	err = t.cm.Release()
+	if err != nil {
+		return err
+	}
 	t.bufferList.UnpinAll()
+	return nil
 }
 
-func (t *TransactionMgr) Recover() {
-	t.bm.Policy().FlushAll(t.txtnum)
-	t.rm.Recover()
+func (t *Mgr) Recover() error {
+	t.bm.Policy().FlushAll(t.txNum)
+	err := t.rm.Recover()
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
-func (t *TransactionMgr) Pin(blk kfile.BlockId) error {
+func (t *Mgr) Pin(blk kfile.BlockId) error {
 	err := t.bufferList.Pin(blk)
 	if err != nil {
 		return fmt.Errorf("failed to pin block %v: %w", blk, err)
 	}
 	return nil
 }
-func (t *TransactionMgr) UnPin(blk kfile.BlockId) error {
+func (t *Mgr) UnPin(blk kfile.BlockId) error {
 	err := t.bufferList.Unpin(blk)
 	if err != nil {
 		return fmt.Errorf("failed to pin block %v: %w", blk, err)
@@ -65,7 +83,7 @@ func (t *TransactionMgr) UnPin(blk kfile.BlockId) error {
 	return nil
 }
 
-func (t *TransactionMgr) Size(filename string) (int, error) {
+func (t *Mgr) Size(filename string) (int32, error) {
 	dummyblk := kfile.NewBlockId(filename, t.EndOfFile)
 	err := t.cm.SLock(*dummyblk)
 	if err != nil {
@@ -78,7 +96,7 @@ func (t *TransactionMgr) Size(filename string) (int, error) {
 	return fileLength, nil
 }
 
-func (t *TransactionMgr) append(filename string) *kfile.BlockId {
+func (t *Mgr) append(filename string) *kfile.BlockId {
 	dummyblk := kfile.NewBlockId(filename, t.EndOfFile)
 	t.cm.XLock(*dummyblk)
 	blk, err := t.fm.Append(filename)
@@ -87,18 +105,18 @@ func (t *TransactionMgr) append(filename string) *kfile.BlockId {
 	}
 	return blk
 }
-func (t *TransactionMgr) blockSize() int {
+func (t *Mgr) blockSize() int {
 	return t.fm.BlockSize()
 }
-func (t *TransactionMgr) AvailableBuffs() int {
+func (t *Mgr) AvailableBuffs() int {
 	return t.bm.Available()
 }
 
-func (t *TransactionMgr) nextTxNumber() int64 {
+func (t *Mgr) nextTxNumber() int64 {
 	return atomic.AddInt64(&t.nextTxNum, 1)
 }
 
-func (t *TransactionMgr) FindCell(blk kfile.BlockId, key []byte) *kfile.Cell {
+func (t *Mgr) FindCell(blk kfile.BlockId, key []byte) *kfile.Cell {
 	t.cm.SLock(blk)
 	buff := t.bufferList.Buffer(blk)
 	cell, _, err := buff.Contents().FindCell(key)
@@ -108,17 +126,15 @@ func (t *TransactionMgr) FindCell(blk kfile.BlockId, key []byte) *kfile.Cell {
 	return cell
 }
 
-func (t *TransactionMgr) InsertCell(blk kfile.BlockId, key []byte, val any, okToLog bool) error {
+func (t *Mgr) InsertCell(blk kfile.BlockId, key []byte, val any, okToLog bool) error {
 	t.cm.XLock(blk)
+	var err error
+	err = t.Pin(blk)
+	if err != nil {
+		return err
+	}
 	buff := t.bufferList.Buffer(blk)
 	lsn := -1
-	var err error
-	if okToLog {
-		lsn, err = t.rm.SetCellValue(buff, key, val)
-		if err != nil {
-			return nil
-		}
-	}
 	cellKey := key
 	cell := kfile.NewKVCell(cellKey)
 	p := buff.Contents()
@@ -126,6 +142,18 @@ func (t *TransactionMgr) InsertCell(blk kfile.BlockId, key []byte, val any, okTo
 	if err != nil {
 		return fmt.Errorf("failed to pin block %v: %w", blk, err)
 	}
-	buff.MarkModified(t.txtnum, lsn)
+	buff.MarkModified(t.txNum, lsn)
+	if okToLog {
+		lsn, err = t.rm.SetCellValue(buff, key, val)
+		if err != nil {
+			return err
+		}
+	}
+
 	return nil
+}
+
+// GetTxNum is required by the TxInterface.
+func (t *Mgr) GetTxNum() int64 {
+	return t.nextTxNum
 }

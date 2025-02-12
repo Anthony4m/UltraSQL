@@ -35,8 +35,8 @@ func TestNewLogMgr(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create LogMgr for new log file: %v", err)
 	}
-	if logMgr.logsize != 0 {
-		t.Errorf("Expected logsize 0 for new log file, got %d", logMgr.logsize)
+	if logMgr.logSize != 0 {
+		t.Errorf("Expected logSize 0 for new log file, got %d", logMgr.logSize)
 	}
 
 	// Test for an existing log file
@@ -47,8 +47,8 @@ func TestNewLogMgr(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create LogMgr for existing log file: %v", err)
 	}
-	if logMgr2.logsize == 0 {
-		t.Errorf("Expected logsize > 0 for existing log file, got %d", logMgr2.logsize)
+	if logMgr2.logSize == 0 {
+		t.Errorf("Expected logSize > 0 for existing log file, got %d", logMgr2.logSize)
 	}
 }
 
