@@ -4,9 +4,18 @@ import (
 	"ultraSQL/txinterface"
 )
 
+const (
+	CHECKPOINT = iota
+	START
+	COMMIT
+	ROLLBACK
+	SETINT
+	SETSTRING
+)
+
 type Ilog_record interface {
-	Op() int
+	Op() int32
 	TxNumber() int64
-	Undo(tx txinterface.TxInterface)
-	//ToBytes() []byte
+	Undo(tx txinterface.TxInterface) error
+	ToBytes() []byte
 }

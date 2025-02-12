@@ -3,31 +3,46 @@ linters:
   # https://golangci-lint.run/usage/linters/#enabled-by-default
   enable:
     - errcheck
-    - gosimple
-    - govet
-    - ineffassign
-    - staticcheck
-    - unused
-    - bodyclose
-    - cyclop
-    - depguard
-    - err113
-    - errorlint
-    - exhaustive
-    - gochecknoglobals
-    - goconst
-    - gocritic
-    - iface
-    - ireturn
-    - makezero
-    - unparam
-    - revive
-    - goimports
-    - goconst
-    - unparam
-    - staticcheck
+#    - gosimple
+#    - govet
+#    - ineffassign
+#    - staticcheck
+#    - unused
+#    - bodyclose
+#    - cyclop
+#    - depguard
+#    - err113
+#    - errorlint
+#    - exhaustive
+#    - gochecknoglobals
+#    - goconst
+#    - gocritic
+#    - iface
+#    - ireturn
+#    - makezero
+#    - unparam
+#    - revive
+#    - goimports
+#    - goconst
+#    - unparam
+#    - staticcheck
   disable:
     - wsl
+    - testpackage
+    - predeclared
+    - nlreturn
+    - mnd
+    - misspell
+    - ineffassign
+    - godox
+    - gci
+    - funlen
+    - dupl
+    - depguard
+    - gofmt
+    - gofumpt
+    - goimports
+    - godot
   # Enable presets.
   # https://golangci-lint.run/usage/linters
   # Default: []

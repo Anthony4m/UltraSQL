@@ -23,7 +23,7 @@ func NewLockTable() *LockTable {
 	return lt
 }
 
-func (lT *LockTable) sLock(blk kfile.BlockId) error {
+func (lT *LockTable) SLock(blk kfile.BlockId) error {
 	lT.mu.Lock()
 	defer lT.mu.Unlock()
 
@@ -43,7 +43,7 @@ func (lT *LockTable) sLock(blk kfile.BlockId) error {
 	return nil
 }
 
-func (lT *LockTable) xLock(blk kfile.BlockId) error {
+func (lT *LockTable) XLock(blk kfile.BlockId) error {
 	lT.mu.Lock()
 	defer lT.mu.Unlock()
 
@@ -79,13 +79,13 @@ func (lT *LockTable) hasOtherLocks(blk kfile.BlockId) bool {
 	return val != 0 && val != 1 // Allow upgrade from single shared lock
 }
 
-func (lT *LockTable) unlock(blk kfile.BlockId) error {
+func (lT *LockTable) Unlock(blk kfile.BlockId) error {
 	lT.mu.Lock()
 	defer lT.mu.Unlock()
 
 	val := lT.getLockVal(blk)
 	if val == 0 {
-		return fmt.Errorf("attempting to unlock block %v which is not locked", blk)
+		return fmt.Errorf("attempting to Unlock block %v which is not locked", blk)
 	}
 
 	if val > 1 {
@@ -99,7 +99,7 @@ func (lT *LockTable) unlock(blk kfile.BlockId) error {
 	return nil
 }
 
-// Helper method to get lock information
+// GetLockInfo helper method to get lock information.
 func (lT *LockTable) GetLockInfo(blk kfile.BlockId) (lockType string, count int) {
 	lT.mu.RLock()
 	defer lT.mu.RUnlock()

@@ -40,7 +40,7 @@ type LogMgr struct {
 	currentBlock   *kfile.BlockId
 	latestLSN      int
 	latestSavedLSN int
-	logsize        int
+	logSize        int32
 }
 
 // NewLogMgr creates a new LogMgr using the provided file and buffer managers.
@@ -56,13 +56,13 @@ func NewLogMgr(fm *kfile.FileMgr, bm *buffer.BufferMgr, logFile string) (*LogMgr
 	}
 
 	var err error
-	if lm.logsize, err = fm.Length(logFile); err != nil {
+	if lm.logSize, err = fm.Length(logFile); err != nil {
 		return nil, &Error{Op: "new", Err: fmt.Errorf("failed to get log file length: %w", err)}
 	}
 
 	// Create a new slotted page for the log.
 	logPage := kfile.NewSlottedPage(fm.BlockSize())
-	if lm.logsize == 0 {
+	if lm.logSize == 0 {
 		// No log file yet; append a new block.
 		lm.currentBlock, err = lm.appendNewBlock()
 		if err != nil || lm.currentBlock == nil {
@@ -72,7 +72,7 @@ func NewLogMgr(fm *kfile.FileMgr, bm *buffer.BufferMgr, logFile string) (*LogMgr
 		lm.bm.Policy().AllocateBufferForBlock(*lm.currentBlock)
 	} else {
 		// Otherwise, set the current block as the last block.
-		lm.currentBlock = kfile.NewBlockId(logFile, lm.logsize-1)
+		lm.currentBlock = kfile.NewBlockId(logFile, lm.logSize-1)
 	}
 
 	// Pin the current block.

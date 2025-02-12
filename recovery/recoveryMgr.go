@@ -8,69 +8,74 @@ import (
 	"ultraSQL/txinterface"
 )
 
-// RecoveryMgr manages the logging and recovery for a given transaction.
-type RecoveryMgr struct {
+// Mgr manages the logging and recovery for a given transaction.
+type Mgr struct {
 	lm    *log.LogMgr
 	bm    *buffer.BufferMgr
 	tx    txinterface.TxInterface
 	txNum int64
 }
 
-// NewRecoveryMgr is analogous to the Java constructor:
-//
-//	public RecoveryMgr(Transaction tx, int txnum, LogMgr lm, BufferMgr bm)
-func NewRecoveryMgr(tx txinterface.TxInterface, txNum int64, lm *log.LogMgr, bm *buffer.BufferMgr) *RecoveryMgr {
-	rm := &RecoveryMgr{
+func NewRecoveryMgr(tx txinterface.TxInterface, txNum int64, lm *log.LogMgr, bm *buffer.BufferMgr) *Mgr {
+	rm := &Mgr{
 		tx:    tx,
 		txNum: txNum,
 		lm:    lm,
 		bm:    bm,
 	}
-	// Write a START record to the log
-	StartRecordWriteToLog(lm, txNum) // e.g., StartRecord.writeToLog(lm, txNum)
+
+	_, err := log_record.StartRecordWriteToLog(lm, txNum)
+	if err != nil {
+		return nil
+	}
 	return rm
 }
 
-// Commit is analogous to public void commit()
-func (r *RecoveryMgr) Commit() {
-	// 1. Flush all buffers associated with this transaction
+func (r *Mgr) Commit() error {
+
 	r.bm.Policy().FlushAll(r.txNum)
-
-	// 2. Write COMMIT record to the log
-	lsn := CommitRecordWriteToLog(r.lm, r.txNum) // e.g., CommitRecord.writeToLog(r.lm, r.txNum)
-
-	// 3. Force the log up to that LSN
+	lsn, err := log_record.CommitRecordWriteToLog(r.lm, r.txNum)
+	if err != nil {
+		return fmt.Errorf("error occurred during commit: %v\n", err)
+	}
 	flushErr := r.lm.Buffer().FlushLSN(lsn)
 	if flushErr != nil {
-		fmt.Printf("error occurred during commit flush: %v\n", flushErr)
+		return fmt.Errorf("error occurred during commit flush: %v\n", flushErr)
 	}
+	return nil
 }
 
-// Rollback is analogous to public void rollback()
-func (r *RecoveryMgr) Rollback() {
+func (r *Mgr) Rollback() error {
 	r.doRollback()
 	r.bm.Policy().FlushAll(r.txNum)
-	lsn := RollbackRecordWriteToLog(r.lm, r.txNum)
+	lsn, err := log_record.RollbackRecordWriteToLog(r.lm, r.txNum)
+	if err != nil {
+		return fmt.Errorf("error occurred during rollback: %v\n", err)
+	}
 	flushErr := r.lm.Buffer().FlushLSN(lsn)
 	if flushErr != nil {
-		fmt.Printf("error occurred during rollback flush: %v\n", flushErr)
+		return fmt.Errorf("error occurred during rollback flush: %v\n", flushErr)
 	}
+	return nil
 }
 
-// Recover is analogous to public void recover()
-func (r *RecoveryMgr) Recover() {
+func (r *Mgr) Recover() error {
 	r.doRecover()
 	r.bm.Policy().FlushAll(r.txNum)
-	lsn := CheckpointRecordWriteToLog(r.lm) // e.g., CheckpointRecord.writeToLog(lm)
+	lsn, err := log_record.CheckpointRecordWriteToLog(r.lm)
+	if err != nil {
+		return fmt.Errorf("error occurred during recovery checkpoint: %v\n", err)
+	}
 	flushErr := r.lm.Buffer().FlushLSN(lsn)
 	if flushErr != nil {
-		fmt.Printf("error occurred during recovery flush: %v\n", flushErr)
+		return fmt.Errorf("error occurred during recovery flush: %v\n", flushErr)
 	}
+	return nil
 }
 
 // SetCellValue updates the cell in a slotted page, then writes a unified log record
 // that stores the old/new serialized cell bytes for undo/redo.
-func (r *RecoveryMgr) SetCellValue(buff *buffer.Buffer, key []byte, newVal any) (int, error) {
+func (r *Mgr) SetCellValue(buff *buffer.Buffer, key []byte, newVal any) (int, error) {
 	// 1. Get the slotted page from the buffer.
 	sp := buff.Contents()
 
@@ -93,14 +98,14 @@ func (r *RecoveryMgr) SetCellValue(buff *buffer.Buffer, key []byte, newVal any) 
 
 	// 6. Write a unified update record to the log: includes txNum, block ID, slotIndex, oldBytes, newBytes.
 	blk := buff.Block() // or any *BlockId if your Buffer returns it
-	lsn := log_record.WriteToLog(*r.lm, r.txNum, *blk, key, oldBytes, newBytes)
+	lsn := log_record.WriteToLog(r.lm, r.txNum, *blk, key, oldBytes, newBytes)
 
 	// 7. Return the LSN so the caller can handle further flush or keep track of it.
 	return lsn, nil
 }
 
 // doRollback performs a backward scan of the log to undo any record belonging to this transaction.
-func (r *RecoveryMgr) doRollback() {
+func (r *Mgr) doRollback() {
 	iter, err := r.lm.Iterator()
 	if err != nil {
 		fmt.Printf("error occurred creating log iterator: %v\n", err)
@@ -112,22 +117,25 @@ func (r *RecoveryMgr) doRollback() {
 			fmt.Printf("error occurred reading next log record: %v\n", err)
 			return
 		}
-		rec := CreateLogRecord(data) // e.g. UnifiedUpdateRecord or other record
+		rec := log_record.CreateLogRecord(data) // e.g. UnifiedUpdateRecord or other record
 		if rec == nil {
 			continue
 		}
 		if rec.TxNumber() == r.txNum {
-			if rec.Op() == START {
+			if rec.Op() == log_record.START {
 				// Once we reach the START record for our transaction, we stop
 				return
 			}
-			rec.Undo(r.tx) // "Undo" is record-specific logic
+			err := rec.Undo(r.tx)
+			if err != nil {
+				return
+			}
 		}
 	}
 }
 
 // doRecover replays the log from the end, undoing updates for transactions that never committed.
-func (r *RecoveryMgr) doRecover() {
+func (r *Mgr) doRecover() {
 	finishedTxs := make(map[int64]bool)
 
 	iter, err := r.lm.Iterator()
@@ -141,18 +149,21 @@ func (r *RecoveryMgr) doRecover() {
 			fmt.Printf("error occurred reading next log record: %v\n", err)
 			return
 		}
-		rec := CreateLogRecord(data)
+		rec := log_record.CreateLogRecord(data)
 		if rec == nil {
 			continue
 		}
 		switch rec.Op() {
-		case CHECKPOINT:
+		case log_record.CHECKPOINT:
 			return
-		case COMMIT, ROLLBACK:
+		case log_record.COMMIT, log_record.ROLLBACK:
 			finishedTxs[rec.TxNumber()] = true
 		default:
 			if !finishedTxs[rec.TxNumber()] {
-				rec.Undo(r.tx)
+				err := rec.Undo(r.tx)
+				if err != nil {
+					return
+				}
 			}
 		}
 	}

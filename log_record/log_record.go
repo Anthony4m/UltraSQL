@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	syslog "log"
 	"ultraSQL/kfile"
 	"ultraSQL/log"
+	"ultraSQL/txinterface"
 )
 
 const (
@@ -48,7 +50,7 @@ func FromBytesUnifiedUpdate(data []byte) (*UnifiedUpdateRecord, error) {
 	}
 
 	// Read block number
-	var blkNum int
+	var blkNum int32
 	if err := binary.Read(buf, binary.BigEndian, &blkNum); err != nil {
 		return nil, fmt.Errorf("failed to read block number: %w", err)
 	}
@@ -101,6 +103,75 @@ func FromBytesUnifiedUpdate(data []byte) (*UnifiedUpdateRecord, error) {
 	}, nil
 }
 
+// Getter methods
+func (r *UnifiedUpdateRecord) Block() kfile.BlockId {
+	return r.blk
+}
+
+func (r *UnifiedUpdateRecord) Key() []byte {
+	return r.key
+}
+
+func (r *UnifiedUpdateRecord) Op() int32 {
+	return UNIFIEDUPDATE
+}
+
+func (r *UnifiedUpdateRecord) TxNumber() int64 {
+	return r.txnum
+}
+
+// Recovery methods
+func (r *UnifiedUpdateRecord) Undo(tx txinterface.TxInterface) error {
+	// Pin the block
+	if err := tx.Pin(r.blk); err != nil {
+		return fmt.Errorf("failed to pin block during undo: %w", err)
+	}
+
+	// Ensure block is unpinned after we're done
+	defer func() {
+		if err := tx.UnPin(r.blk); err != nil {
+			// Log the error since we can't return it from the defer
+			syslog.Printf("failed to unpin block during undo: %v", err)
+		}
+	}()
+
+	// Insert the old value back
+	if err := tx.InsertCell(r.blk, r.key, r.oldBytes, false); err != nil {
+		syslog.Printf("This is old value %s this is new value %s", r.oldBytes, r.newBytes)
+		return fmt.Errorf("failed to insert old value during undo: %w", err)
+	}
+
+	return nil
+}
+
+func (r *UnifiedUpdateRecord) Redo(tx txinterface.TxInterface) error {
+	// Pin the block
+	if err := tx.Pin(r.blk); err != nil {
+		return fmt.Errorf("failed to pin block during redo: %w", err)
+	}
+
+	// Ensure block is unpinned after we're done
+	defer func() {
+		if err := tx.UnPin(r.blk); err != nil {
+			// Log the error since we can't return it from the defer
+			syslog.Printf("failed to unpin block during redo: %v", err)
+		}
+	}()
+
+	// Insert the new value
+	if err := tx.InsertCell(r.blk, r.key, r.newBytes, false); err != nil {
+		return fmt.Errorf("failed to insert new value during redo: %w", err)
+	}
+
+	return nil
+}
+
+func (r *UnifiedUpdateRecord) String() string {
+	return fmt.Sprintf("UNIFIEDUPDATE txnum=%d, blk=%s, key=%s, oldBytes=%v, newBytes=%v",
+		r.txnum, r.blk, r.key, r.oldBytes, r.newBytes)
+}
+
+// ToBytes serializes a unified update record
 func (r *UnifiedUpdateRecord) ToBytes() []byte {
 	var buf bytes.Buffer
 
@@ -157,7 +228,7 @@ func (r *UnifiedUpdateRecord) ToBytes() []byte {
 }
 
 // WriteToLog writes a unified update record to the log and returns the LSN
-func WriteToLog(lm log.LogMgr, txnum int64, blk kfile.BlockId, key []byte, oldBytes []byte, newBytes []byte) int {
+func WriteToLog(lm *log.LogMgr, txnum int64, blk kfile.BlockId, key []byte, oldBytes []byte, newBytes []byte) int {
 	record := &UnifiedUpdateRecord{
 		txnum:    txnum,
 		blk:      blk,
@@ -173,23 +244,43 @@ func WriteToLog(lm log.LogMgr, txnum int64, blk kfile.BlockId, key []byte, oldBy
 	}
 	return lsn
 }
-func CreateLogRecord(data []byte) *UnifiedUpdateRecord {
+
+func CreateLogRecord(data []byte) Ilog_record {
 	// Peek at op code
 	if len(data) < 4 {
 		return nil
 	}
 	op := int32(binary.BigEndian.Uint32(data[0:4]))
 	switch op {
-	case log.CHECKPOINT:
-		return NewCheckpointRecordFromBytes(data)
-	case log.START:
-		return NewStartRecordFromBytes(data)
-	case log.COMMIT:
-		return NewCommitRecordFromBytes(data)
-	case log.ROLLBACK:
-		return NewRollbackRecordFromBytes(data)
+	case CHECKPOINT:
+		rec, err := NewCheckpointRecordFromBytes(data)
+		if err != nil {
+			return nil
+		}
+		return rec
+	case START:
+		rec, err := NewStartRecordFromBytes(data)
+		if err != nil {
+			return nil
+		}
+		return rec
+	case COMMIT:
+		rec, err := NewCommitRecordFromBytes(data)
+		if err != nil {
+			return nil
+		}
+		return rec
+	case ROLLBACK:
+		rec, err := NewRollbackRecordFromBytes(data)
+		if err != nil {
+			return nil
+		}
+		return rec
 	case UNIFIEDUPDATE:
-		rec, _ := FromBytesUnifiedUpdate(data)
+		rec, err := FromBytesUnifiedUpdate(data)
+		if err != nil {
+			return nil
+		}
 		return rec
 	default:
 		return nil
