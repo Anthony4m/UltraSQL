@@ -198,7 +198,7 @@ func (fm *FileMgr) Read(blk *BlockId, p *SlottedPage) error {
 		return fmt.Errorf("failed to get file for block %v: %w", blk, err)
 	}
 
-	offset := int64(blk.Number() * fm.blocksize)
+	offset := int64(blk.Number() * int32(fm.blocksize))
 	if _, err = f.Seek(offset, io.SeekStart); err != nil {
 		return fmt.Errorf(seekErrFormat, offset, blk.FileName(), err)
 	}
@@ -229,7 +229,7 @@ func (fm *FileMgr) Write(blk *BlockId, p *SlottedPage) error {
 		return fmt.Errorf("failed to get file for block %v: %w", blk, err)
 	}
 
-	offset := int64(blk.Number() * fm.blocksize)
+	offset := int64(blk.Number() * int32(fm.blocksize))
 	if _, err = f.Seek(offset, io.SeekStart); err != nil {
 		return fmt.Errorf(seekErrFormat, offset, blk.FileName(), err)
 	}
@@ -269,7 +269,7 @@ func (fm *FileMgr) Append(filename string) (*BlockId, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get file for append: %w", err)
 	}
-	offset := int64(newBlkNum * fm.blocksize)
+	offset := int64(newBlkNum * int32(fm.blocksize))
 	if _, err = f.Seek(offset, io.SeekStart); err != nil {
 		return nil, fmt.Errorf("failed to seek to offset %d in file %s: %w", offset, filename, err)
 	}
@@ -287,12 +287,12 @@ func (fm *FileMgr) Append(filename string) (*BlockId, error) {
 }
 
 // Length returns the number of blocks in the file.
-func (fm *FileMgr) Length(filename string) (int, error) {
+func (fm *FileMgr) Length(filename string) (int32, error) {
 	return fm.LengthLocked(filename)
 }
 
 // NewLength is a helper that returns the length or 0 on error.
-func (fm *FileMgr) NewLength(filename string) int {
+func (fm *FileMgr) NewLength(filename string) int32 {
 	n, err := fm.LengthLocked(filename)
 	if err != nil {
 		return 0
@@ -301,7 +301,7 @@ func (fm *FileMgr) NewLength(filename string) int {
 }
 
 // LengthLocked returns the number of blocks in the file; the caller must hold fm.mutex.
-func (fm *FileMgr) LengthLocked(filename string) (int, error) {
+func (fm *FileMgr) LengthLocked(filename string) (int32, error) {
 	f, err := fm.getFile(filename)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get file %s: %w", filename, err)
@@ -310,7 +310,7 @@ func (fm *FileMgr) LengthLocked(filename string) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("failed to stat file %s: %w", filename, err)
 	}
-	numBlocks := int(stat.Size() / int64(fm.blocksize))
+	numBlocks := int32(stat.Size() / int64(fm.blocksize))
 	return numBlocks, nil
 }
 
@@ -378,13 +378,13 @@ func (fm *FileMgr) WriteLog() []ReadWriteLogEntry {
 }
 
 // ensureFileSize ensures the file has at least the required number of blocks.
-func (fm *FileMgr) ensureFileSize(blk *BlockId, requiredBlocks int) error {
+func (fm *FileMgr) ensureFileSize(blk *BlockId, requiredBlocks int32) error {
 	currentBlocks, err := fm.Length(blk.FileName())
 	if err != nil {
 		return err
 	}
 	if currentBlocks < requiredBlocks {
-		size := int64(requiredBlocks * fm.blocksize)
+		size := int64(requiredBlocks * int32(fm.blocksize))
 		return fm.PreallocateFile(blk, size)
 	}
 	return nil

@@ -7,10 +7,10 @@ import (
 
 type BlockId struct {
 	Filename string
-	Blknum   int
+	Blknum   int32
 }
 
-func NewBlockId(filename string, blknum int) *BlockId {
+func NewBlockId(filename string, blknum int32) *BlockId {
 	if err := ValidateFilename(filename); err != nil {
 		_ = fmt.Errorf("an error occured %s", err)
 	}
@@ -31,7 +31,7 @@ func (b *BlockId) SetFileName(filename string) {
 	b.Filename = filename
 }
 
-func (b *BlockId) Number() int {
+func (b *BlockId) Number() int32 {
 	return b.Blknum
 }
 
@@ -80,7 +80,7 @@ func (b *BlockId) IsFirst() bool {
 	return b.Blknum == 0
 }
 
-func ValidateBlockNumber(blknum int) error {
+func ValidateBlockNumber(blknum int32) error {
 	if blknum < 0 {
 		return fmt.Errorf("block number cannot be negative: %d", blknum)
 	}

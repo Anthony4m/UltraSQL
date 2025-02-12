@@ -112,7 +112,7 @@ func (b *Buffer) LogFlush(blk *kfile.BlockId) error {
 	return nil
 }
 
-// compressPage / decompressPage could remain the same, or be simplified:
+// compressPage / decompressPage could remain the same, or be simplified:.
 func (b *Buffer) compressPage(page *kfile.Page) error {
 	if len(page.Contents()) <= PageSizeThreshold || page.IsCompressed {
 		return nil
