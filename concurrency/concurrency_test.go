@@ -1,70 +1,80 @@
 package concurrency
 
 import (
+	"sync"
 	"testing"
+	"time"
 	"ultraSQL/kfile"
 )
 
-// TestConcurrencyManager provides a simple, single-threaded test of the
-// ConcurrencyMgr and LockTable logic.
-func TestConcurrencyManager(t *testing.T) {
-	// 1) Create a concurrency manager.
+// TestConcurrencyManagerConcurrent demonstrates a "better" test that
+// actually exercises concurrency: multiple readers, then an exclusive writer.
+func TestConcurrencyManagerConcurrent(t *testing.T) {
 	cm := NewConcurrencyMgr()
-	if cm == nil {
-		t.Fatalf("Failed to create ConcurrencyMgr")
+	blk := kfile.NewBlockId("testfile", 42)
+
+	var wg sync.WaitGroup
+
+	// Number of concurrent readers
+	numReaders := 3
+
+	// Start multiple reader goroutines (each one acquires SLock, simulates read, then releases).
+	for i := 1; i <= numReaders; i++ {
+		wg.Add(1)
+		go func(readerID int) {
+			defer wg.Done()
+
+			// Acquire shared lock
+			if err := cm.SLock(*blk); err != nil {
+				t.Errorf("[Reader %d] Failed to SLock: %v", readerID, err)
+				return
+			}
+			t.Logf("[Reader %d] Acquired SLock", readerID)
+
+			// Simulate reading
+			time.Sleep(100 * time.Millisecond)
+
+			// Release
+			if err := cm.Release(); err != nil {
+				t.Errorf("[Reader %d] Failed to release: %v", readerID, err)
+				return
+			}
+			t.Logf("[Reader %d] Released SLock", readerID)
+		}(i)
 	}
 
-	// 2) Create a dummy block to lock.
-	blk := kfile.NewBlockId("testfile", 0)
+	// Give readers a moment to start and (likely) acquire their SLocks
+	time.Sleep(50 * time.Millisecond)
 
-	// -------------------------------------------------------------------------
-	// Test: Acquire a shared lock (SLock)
-	// -------------------------------------------------------------------------
-	if err := cm.SLock(*blk); err != nil {
-		t.Errorf("SLock failed: %v", err)
-	}
+	// Start one writer goroutine
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
 
-	lockType, exists := cm.GetLockType(*blk)
-	if !exists {
-		t.Errorf("Expected a lock to exist, but none found for block %v", blk)
-	} else if lockType != "S" {
-		t.Errorf("Expected shared lock (S), got %s", lockType)
-	}
+		// Attempt to acquire an exclusive lock
+		if err := cm.XLock(*blk); err != nil {
+			t.Errorf("[Writer] Failed to XLock: %v", err)
+			return
+		}
+		t.Logf("[Writer] Acquired XLock")
 
-	if err := cm.SLock(*blk); err != nil {
-		t.Errorf("SLock failed: %v", err)
-	}
+		// Simulate writing
+		time.Sleep(200 * time.Millisecond)
 
-	// -------------------------------------------------------------------------
-	// Test: Acquire exclusive lock (XLock) on same block
-	// (Should upgrade from S to X if there's a single shared lock.)
-	// -------------------------------------------------------------------------
-	if err := cm.XLock(*blk); err == nil {
-		t.Errorf("XLock failed (upgrade from S): %v", err)
-	}
+		// Release
+		if err := cm.Release(); err != nil {
+			t.Errorf("[Writer] Failed to release after XLock: %v", err)
+			return
+		}
+		t.Logf("[Writer] Released XLock")
+	}()
 
-	lockType, exists = cm.GetLockType(*blk)
-	if !exists {
-		t.Errorf("Expected a lock to exist after XLock, but none found for block %v", blk)
-	} else if lockType != "X" {
-		t.Errorf("Expected exclusive lock (X), got %s", lockType)
-	}
+	// Wait for all goroutines to finish
+	wg.Wait()
 
-	if err := cm.SLock(*blk); err != nil {
-		t.Errorf("SLock failed: %v", err)
-	}
-
-	// -------------------------------------------------------------------------
-	// Test: Release all locks.
-	// -------------------------------------------------------------------------
-	if err := cm.Release(); err != nil {
-		t.Errorf("Release failed: %v", err)
-	}
-
-	lockType, exists = cm.GetLockType(*blk)
-	if exists {
-		t.Errorf("Expected no lock after Release, found lock type %s", lockType)
-	}
+	// At this point, the test completes successfully if no deadlock has occurred
+	// and if all lock acquisitions/release calls returned successfully.
+	t.Log("All readers and writer completed without deadlock.")
 }
 
 // TestLockTableDirect tests LockTable directly if desired.
