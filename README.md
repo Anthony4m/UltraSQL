@@ -1,123 +1,80 @@
 # UltraSQL
 
-UltraSQL is a minimalist database system built in Go, designed to be lightweight, fast, and easy to use. It provides file-based storage, a custom query engine, and extendable indexing, making it ideal for learners and small-scale applications.
+UltraSQL is the storage engine of a database, built from scratch in Go to learn how databases work underneath SQL: how bytes are laid out on disk, how pages are cached in memory, and how transactions survive a crash.
 
-![Go](https://img.shields.io/badge/go-v1.19-blue) ![License](https://img.shields.io/badge/license-MIT-green) ![Build](https://img.shields.io/github/actions/workflow/status/Anthony4m/ultraSQL/build.yml?branch=main) ![Go Report Card](https://goreportcard.com/badge/github.com/Anthony4m/ultraSQL)
+![Go](https://img.shields.io/badge/go-v1.19-blue) ![License](https://img.shields.io/badge/license-MIT-green)
 
----
-
-## Key Features
-- **File-based Storage**: Minimalistic, efficient file handling for data persistence.
-- **Custom Query Engine**: Support for basic SQL-like queries.
-- **Extendable Indexing**: Flexible indexing mechanisms for optimizing queries.
-- **Transaction Management**: Ensures data consistency with ACID properties.
-- **Built-in Logging**: Debugging and performance tracking tools.
+It is a learning project, not a database you can query yet. There is no SQL parser, query engine or index. Those would sit on top of the layers below.
 
 ---
 
-## Why UltraSQL?
-- Lightweight and ideal for embedded use cases.
-- Perfect for learning database internals.
-- Built in Go for simplicity, extensibility, and high performance.
+## What's built
+
+| Layer | Package | What it does |
+|---|---|---|
+| File manager | `kfile/` | Reads and writes fixed-size blocks to database files |
+| Slotted pages | `kfile/` | Lays out variable-length records (cells) inside a block, with a slot directory so records can move without breaking references |
+| Buffer pool | `buffer/` | Caches blocks in memory, pins and unpins them, and evicts with the clock algorithm |
+| Log manager | `log/`, `log_record/` | Append-only write-ahead log: start, commit, rollback, checkpoint and update records |
+| Recovery | `recovery/` | Rollback scans the log backwards and undoes a transaction's updates; crash recovery undoes every transaction that never committed, stopping at a checkpoint |
+| Concurrency | `concurrency/` | A lock table with shared and exclusive locks per block |
+| Transactions | `transaction/` | Ties it together: pin blocks, insert and find cells, commit, roll back, recover |
 
 ---
 
-## Getting Started
+## Writing about it
 
-### Prerequisites
-- **Go** (version 1.19 or later).
-- A basic understanding of Go programming and database concepts.
+I wrote up each layer as I built it, on [dev.to/just_kojo](https://dev.to/just_kojo):
 
-### Installation
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/Anthony4m/ultraSQL.git
-   cd ultraSQL
-   ```
-2. Install dependencies:
-   ```bash
-   go mod tidy
-   ```
+- [A Deep Dive into Database Architecture: Building the Backbone of Modern Systems](https://dev.to/just_kojo/a-deep-dive-into-database-architecture-building-the-backbone-of-modern-systems-3o3)
+- [Database Internals: Building a File Manager in Go from Scratch](https://dev.to/just_kojo/database-internals-building-a-file-manager-in-go-from-scratch-573)
+- [Building a Go Database Page Management System](https://dev.to/just_kojo/building-a-go-database-page-management-system-a-deep-dive-into-efficient-data-storage-3mfm)
+- [TOAST: PostgreSQL's Secret Sauce for Handling Big Data](https://dev.to/just_kojo/toast-postgresqls-secret-sauce-for-handling-big-data-50mm)
+- [Dive Into Slotted Pages: Building Efficient Record Management in Go](https://dev.to/just_kojo/dive-into-slotted-pages-building-efficient-record-management-in-go-4aeg)
 
-### Usage
-To run the application:
+---
+
+## Running it
+
+Requires Go 1.19 or later.
+
 ```bash
-go run main.go
+git clone https://github.com/Anthony4m/ultraSQL.git
+cd ultraSQL
+go run main.go          # writes a slotted page to a block and reads it back
+go test ./kfile/...     # file manager and slotted page tests
 ```
 
-To test the implementation:
-```bash
-go test ./...
-```
+`main.go` is a small demo of the storage layer: it appends a block, writes an int, a string, a date and a bool into a slotted page, writes the page to disk, and reads it back.
 
 ---
 
-## Example Usage
-```go
-package main
-import "ultrasql"
+## Status
 
-func main() {
-    db := ultrasql.New()
-    
-    // Create table
-    db.CreateTable("users", []string{"id", "name"})
-    
-    // Insert data
-    db.Insert("users", []interface{}{1, "John Doe"})
-    db.Insert("users", []interface{}{2, "Jane Smith"})
-    
-    // Query data
-    rows := db.Query("SELECT * FROM users WHERE id = 1")
-    fmt.Println(rows)
-    
-    // Transaction Example
-    tx := db.BeginTransaction()
-    tx.Insert("users", []interface{}{3, "Alice Johnson"})
-    tx.Commit()
-}
-```
+- The storage layers above are in place.
+- Some tests still refer to an older LRU eviction policy that was replaced by the clock algorithm, so `go test ./...` does not fully pass yet. `kfile` tests pass.
+- Not started: SQL parsing, query planning and execution, indexes.
 
 ---
 
-## Directory Structure
+## Directory structure
+
 ```plaintext
 .
-├── kfile/                 # Core file handling and storage management
-├── log/                   # Logging utilities
-├── mydb/                  # Core database engine and operations
-├── utils/                 # Shared utility functions and helpers
-├── buffer/                 # Contains buffer and cache
-├── .gitignore             # Specifies files ignored by Git
-├── README.md              # Project overview and usage instructions
-├── go.mod                 # Go module dependencies
-└── main.go                # Main entry point for running the application
+├── kfile/          # file manager, blocks, slotted pages, cells
+├── buffer/         # buffer pool and clock eviction
+├── log/            # write-ahead log manager
+├── log_record/     # log record types (start, commit, rollback, checkpoint, update)
+├── recovery/       # rollback and crash recovery
+├── concurrency/    # lock table, shared and exclusive locks
+├── transaction/    # transaction manager
+├── txinterface/    # transaction interface shared by recovery and log records
+├── utils/          # iterators and helpers
+└── main.go         # storage-layer demo
 ```
-
----
-
-## Use Cases
-- **Learning Tool**: Understand database internals and Go development.
-- **Prototyping**: Quickly build data-driven applications.
-- **Embedded Database**: Lightweight storage solution for small-scale projects.
-
----
-
-## Contributing
-Contributions are welcome! Please follow these steps:
-1. Fork the repository.
-2. Create a feature branch: `git checkout -b feature-name`.
-3. Commit your changes: `git commit -m "Add feature-name"`.
-4. Push to the branch: `git push origin feature-name`.
-5. Open a pull request.
 
 ---
 
 ## License
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
 
----
-
-## Acknowledgments
-- Inspired by lightweight database implementations.
-- Special thanks to the Go community for their invaluable resources.
+MIT. See [LICENSE](LICENSE).
