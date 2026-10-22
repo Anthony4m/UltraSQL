@@ -24,13 +24,13 @@ It is a learning project, not a database you can query yet. There is no SQL pars
 
 ## Writing about it
 
-I wrote up each layer as I built it, on [dev.to/anthony4m](https://dev.to/anthony4m):
+I wrote up each layer as I built it, on [dev.to/just_kojo](https://dev.to/just_kojo):
 
-- Database Internals: Building a File Manager in Go from Scratch
-- Building a Go Database Page Management System
-- Dive Into Slotted Pages: Building Efficient Record Management in Go
-- A Deep Dive into Database Architecture
-- TOAST: PostgreSQL's Secret Sauce for Handling Big Data
+- [A Deep Dive into Database Architecture: Building the Backbone of Modern Systems](https://dev.to/just_kojo/a-deep-dive-into-database-architecture-building-the-backbone-of-modern-systems-3o3)
+- [Database Internals: Building a File Manager in Go from Scratch](https://dev.to/just_kojo/database-internals-building-a-file-manager-in-go-from-scratch-573)
+- [Building a Go Database Page Management System](https://dev.to/just_kojo/building-a-go-database-page-management-system-a-deep-dive-into-efficient-data-storage-3mfm)
+- [TOAST: PostgreSQL's Secret Sauce for Handling Big Data](https://dev.to/just_kojo/toast-postgresqls-secret-sauce-for-handling-big-data-50mm)
+- [Dive Into Slotted Pages: Building Efficient Record Management in Go](https://dev.to/just_kojo/dive-into-slotted-pages-building-efficient-record-management-in-go-4aeg)
 
 ---
 
